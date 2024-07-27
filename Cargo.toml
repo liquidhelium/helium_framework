@@ -1,0 +1,46 @@
+[package]
+name = "helium_framework"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.14.0", default-features = false, features = [
+    # "animation",
+    "bevy_asset",
+    # "bevy_scene",
+    "bevy_winit",
+    "bevy_core_pipeline",
+    # "bevy_pbr",
+    # "bevy_gltf",
+    "bevy_render",
+    "bevy_sprite",
+    "png",
+    "hdr",
+    "zstd",
+    # "x11",
+    "ktx2",
+    # "filesystem_watcher",
+    "tonemapping_luts",
+    # "webgl2",
+    # "wayland",
+    "multi_threaded",
+    "bevy_gizmos"
+] }
+bevy_egui = "0.28.0"
+egui = "0.28.1"
+egui_dock = "0.13.0"
+egui-notify = "0.15.0"
+snafu = "0.8"
+smallvec = "1"
+serde = {version = "1", features = ["derive"], optional = true}
+rust-i18n = "3"
+indexmap = "2"
+enum_dispatch = "0.3"
+
+
+[features]
+default = ["serde"]
+serde = ["egui_dock/serde", "smallvec/serde", "dep:serde"]
+
+[[example]]
+name = "basic"
