@@ -5,8 +5,8 @@ use egui_dock::{DockArea, DockState};
 use helium_framework::{
     menu::{show_menu_ui, Button, Custom, MenuExt},
     prelude::*,
-    tab_system::{HeTabViewer, HeDockstate, TabRegistrationExt, TabRegistry},
-    widgets::{widget, DockButtons},
+    tab_system::{HeDockstate, HeTabViewer, TabRegistrationExt, TabRegistry},
+    widgets::{dock_button, widget},
 };
 fn main() {
     let mut app = App::new();
@@ -32,7 +32,7 @@ fn main() {
             ctx.add(
                 "win",
                 "".into(),
-                Custom(Box::new(|ui, world, _| widget::<DockButtons>(world, ui))),
+                Custom(Box::new(|ui, world, _| widget(world,ui,dock_button))),
                 0,
             );
         });

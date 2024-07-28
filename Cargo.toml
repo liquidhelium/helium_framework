@@ -22,7 +22,7 @@ bevy = { version = "0.14.0", default-features = false, features = [
     # "filesystem_watcher",
     "tonemapping_luts",
     # "webgl2",
-    # "wayland",
+    "wayland",
     "multi_threaded",
     "bevy_gizmos"
 ] }
