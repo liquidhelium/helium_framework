@@ -28,13 +28,7 @@ impl<'a> TabViewer for HeTabViewer<'a> {
 }
 
 #[derive(Debug, Resource)]
-pub struct HeDockstate(pub DockState<TabId>);
-
-
-#[derive(Resource)]
-pub struct HeDockState{
-    pub state: DockState<TabId>
-}
+pub struct HeDockState(pub DockState<TabId>);
 
 pub type TabId = Identifier;
 
@@ -54,7 +48,7 @@ pub fn tab_focused(tab: impl Into<TabId>) -> impl Condition<()> {
 pub fn tab_opened(tab: impl Into<TabId>) -> impl Condition<()> {
     let tab = tab.into();
     (move |res: Option<Res<HeDockState>>| {
-        res.is_some_and(|res| res.state.find_tab(&tab).is_some())
+        res.is_some_and(|res| res.0.find_tab(&tab).is_some())
     })
     .and_then(|| true)
 }

@@ -5,7 +5,7 @@ use egui_dock::{DockArea, DockState};
 use helium_framework::{
     menu::{show_menu_ui, Button, Custom, MenuExt},
     prelude::*,
-    tab_system::{HeDockstate, HeTabViewer, TabRegistrationExt, TabRegistry},
+    tab_system::{HeDockState, HeTabViewer, TabRegistrationExt, TabRegistry},
     widgets::{dock_button, widget},
 };
 fn main() {
@@ -13,7 +13,7 @@ fn main() {
     app.add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin)
         .add_plugins(HeliumFramework)
-        .insert_resource(HeDockstate(DockState::new(vec!["default".into()])));
+        .insert_resource(HeDockState(DockState::new(vec!["default".into()])));
     app.add_event::<ButtonClicked>();
     app.register_action("maximize", "show mouse, events", it_works)
         .register_action("basic.log_clicked", "log click times", log_button_clicked)
@@ -82,7 +82,7 @@ fn egui_main(world: &mut World) {
         });
     });
     world.resource_scope(|world: &mut World, mut registry: Mut<'_, TabRegistry>| {
-        world.resource_scope(|world: &mut World, mut state: Mut<'_, HeDockstate>| {
+        world.resource_scope(|world: &mut World, mut state: Mut<'_, HeDockState>| {
             DockArea::new(&mut state.0).show(
                 ctx,
                 &mut HeTabViewer {
