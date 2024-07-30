@@ -22,5 +22,5 @@ impl Plugin for HeliumFramework {
 }
 
 pub mod prelude {
-    pub use super::{action::*, hotkeys::*, tab_system::*,HeliumFramework};
+    pub use super::{action::*, hotkeys::*, menu::*, tab_system::*, utils::*, HeliumFramework};
 }

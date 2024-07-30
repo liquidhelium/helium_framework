@@ -33,7 +33,7 @@ pub struct HeDockstate(pub DockState<TabId>);
 
 #[derive(Resource)]
 pub struct HeDockState{
-    state: DockState<TabId>
+    pub state: DockState<TabId>
 }
 
 pub type TabId = Identifier;
