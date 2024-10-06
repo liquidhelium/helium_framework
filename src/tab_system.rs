@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use bevy::{ecs::schedule::BoxedCondition, prelude::*, utils::HashMap};
-use egui::Ui;
+use egui::{Ui, UiBuilder};
 use egui_dock::{DockState, TabViewer};
 use rust_i18n::t;
 use snafu::Snafu;
@@ -47,15 +47,21 @@ pub fn tab_focused(tab: impl Into<TabId>) -> impl Condition<()> {
 
 pub fn tab_opened(tab: impl Into<TabId>) -> impl Condition<()> {
     let tab = tab.into();
-    (move |res: Option<Res<HeDockState>>| {
-        res.is_some_and(|res| res.0.find_tab(&tab).is_some())
-    })
-    .and_then(|| true)
+    (move |res: Option<Res<HeDockState>>| res.is_some_and(|res| res.0.find_tab(&tab).is_some()))
+        .and_then(|| true)
 }
 
 impl TabStorage {
     pub fn run_with(&mut self, world: &mut World, ui: &mut Ui) -> TabResult {
-        let child = ui.child_ui(ui.max_rect(), *ui.layout(), None);
+        let child = {
+            let max_rect = ui.max_rect();
+            let layout = *ui.layout();
+            ui.new_child(
+                UiBuilder::new()
+                    .max_rect(max_rect)
+                    .layout(layout)
+            )
+        };
 
         self.avalible_condition
             .run_readonly((), world)

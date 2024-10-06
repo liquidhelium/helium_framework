@@ -26,10 +26,10 @@ bevy = { version = "0.14.0", default-features = false, features = [
     "multi_threaded",
     "bevy_gizmos"
 ] }
-bevy_egui = "0.28.0"
-egui = "0.28.1"
-egui_dock = "0.13.0"
-egui-notify = "0.15.0"
+bevy_egui = "0.30.0"
+egui = "0.29.1"
+egui_dock = "0.14.0"
+egui-notify = "0.16.0"
 snafu = "0.8"
 smallvec = "1"
 serde = {version = "1", features = ["derive"], optional = true}

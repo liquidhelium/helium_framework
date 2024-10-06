@@ -26,9 +26,8 @@ impl FromIterator<String> for Identifier {
         Self {
             inner: iter
                 .into_iter()
-                .map(|s| {
+                .inspect(|s| {
                     assert!(!s.contains('.'));
-                    s
                 })
                 .collect(),
         }
