@@ -201,7 +201,7 @@ impl ActionsExt for App {
                 } else {
                     Box::new(IntoSystem::into_system(
                         move |In(t): In<T>, world: &mut World| {
-                            system.run(unsafe { transmute_unchecked(In(t)) }, world);
+                            system.run(unsafe { transmute_unchecked(t) }, world);
                         },
                     ))
                 };
