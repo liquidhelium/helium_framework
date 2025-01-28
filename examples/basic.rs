@@ -17,7 +17,7 @@ fn main() {
     app.add_event::<ButtonClicked>();
     app.register_action("maximize", "show mouse, events", it_works)
         .register_action("basic.log_clicked", "log click times", log_button_clicked)
-        .register_action("quit", "quit", || std::process::exit(0));
+        .register_action("quit", "quit", || {std::process::exit(0);});
     app.register_tab("default", "Default", default_tab, || true)
         .register_tab("default2", "Default2", default_tab, || true)
         .register_tab("default3", "Default3", default_tab, || true)

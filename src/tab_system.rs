@@ -33,7 +33,7 @@ pub struct HeDockState(pub DockState<TabId>);
 pub type TabId = Identifier;
 
 pub struct TabStorage {
-    boxed: Box<dyn System<In = Ui, Out = ()>>,
+    boxed: Box<dyn System<In = In<Ui>, Out = ()>>,
     avalible_condition: BoxedCondition,
     tab_title: Cow<'static, str>,
 }
@@ -42,13 +42,13 @@ pub struct TabStorage {
 pub struct FocusedTab(pub Option<TabId>);
 
 pub fn tab_focused(tab: impl Into<TabId>) -> impl Condition<()> {
-    resource_exists_and_equals(FocusedTab(Some(tab.into()))).and_then(|| true)
+    resource_exists_and_equals(FocusedTab(Some(tab.into()))).and(|| true)
 }
 
 pub fn tab_opened(tab: impl Into<TabId>) -> impl Condition<()> {
     let tab = tab.into();
     (move |res: Option<Res<HeDockState>>| res.is_some_and(|res| res.0.find_tab(&tab).is_some()))
-        .and_then(|| true)
+        .and(|| true)
 }
 
 impl TabStorage {
@@ -111,7 +111,7 @@ pub trait TabRegistrationExt {
         &mut self,
         id: impl Into<TabId>,
         name: impl Into<Cow<'static, str>>,
-        system: impl IntoSystem<Ui, (), M1>,
+        system: impl IntoSystem<In<Ui>, (), M1>,
         avalible_when: impl Condition<M2>,
     ) -> &mut Self;
 }
@@ -121,7 +121,7 @@ impl TabRegistrationExt for App {
         &mut self,
         id: impl Into<TabId>,
         name: impl Into<Cow<'static, str>>,
-        system: impl IntoSystem<Ui, (), M1>,
+        system: impl IntoSystem<In<Ui>, (), M1>,
         avalible_when: impl Condition<M2>,
     ) -> &mut Self {
         self.world_mut()

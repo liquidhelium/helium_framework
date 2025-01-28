@@ -149,7 +149,7 @@ impl Plugin for HotkeyPlugin {
         app.init_resource::<HotkeyRegistry>();
         app.add_systems(
             PostUpdate,
-            dispatch_hotkey.after(bevy_egui::EguiSet::ProcessOutput),
+            dispatch_hotkey.after(bevy_egui::EguiPostUpdateSet::ProcessOutput),
         );
     }
 }

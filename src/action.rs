@@ -1,4 +1,6 @@
 use std::any::type_name;
+use std::intrinsics::transmute_unchecked;
+use std::mem::transmute;
 use std::sync::Arc;
 
 use bevy::ecs::system::SystemParam;
@@ -6,6 +8,7 @@ use bevy::prelude::*;
 use bevy::reflect::{TypeInfo, Typed};
 use bevy::utils::HashMap;
 use egui::mutex::Mutex;
+use sealed::Sealed;
 use snafu::Snafu;
 
 use crate::utils::identifier::Identifier;
@@ -68,7 +71,7 @@ pub trait DynActionStorage: Send + Sync {
 }
 
 pub struct ActionStorage<Input: ActionArgument> {
-    action: Arc<Mutex<Box<dyn System<In = Input, Out = ()>>>>,
+    action: Arc<Mutex<Box<dyn System<In = In<Input>, Out = ()>>>>,
 }
 
 impl<Input: ActionArgument> DynActionStorage for ActionStorage<Input> {
@@ -105,7 +108,7 @@ impl Actions<'_, '_> {
         input: I,
     ) -> Result<(), ActionError> {
         if self.storages.0.contains_key(id) {
-            self.commands.add(
+            self.commands.queue(
                 self.storages
                     .0
                     .get(id)
@@ -137,16 +140,49 @@ pub enum ActionError {
 }
 
 pub trait ActionsExt {
-    fn register_action<M, In: ActionArgument>(
+    fn register_action<M, T: 'static + Reflect +Typed, SystemInput: InputSubset<ThisType = T>>(
         &mut self,
         id: impl Into<ActionId>,
         description: impl Into<String>,
-        action: impl IntoSystem<In, (), M>,
+        action: impl IntoSystem<SystemInput, (), M>,
     ) -> &mut Self;
 }
 
+mod sealed {
+    use bevy::ecs::system::{In, IntoSystem};
+
+    pub trait Sealed {}
+    impl<T> Sealed for In<T> {}
+    impl Sealed for () {}
+}
+
+pub trait InputSubset: sealed::Sealed + SystemInput + 'static {
+    type ThisType: 'static + Reflect + Typed;
+    fn kind() -> u8;
+    fn reflect(self) -> impl Reflect;
+}
+impl InputSubset for () {
+    type ThisType = ();
+    fn kind() -> u8 {
+        0
+    }
+    fn reflect(self) -> impl Reflect {}
+}
+impl<T> InputSubset for In<T>
+where
+    T: 'static + Reflect + Typed,
+{
+    type ThisType = T;
+    fn kind() -> u8 {
+        1
+    }
+    fn reflect(self) -> impl Reflect {
+        self.0
+    }
+}
+
 impl ActionsExt for App {
-    fn register_action<M, SystemInput: ActionArgument>(
+    fn register_action<M, T: 'static + Reflect +Typed, SystemInput: InputSubset<ThisType = T>>(
         &mut self,
         id: impl Into<ActionId>,
         description: impl Into<String>,
@@ -156,11 +192,24 @@ impl ActionsExt for App {
             .resource_scope(|world, mut actions: Mut<'_, ActionRegistry>| {
                 let mut system = IntoSystem::into_system(action);
                 system.initialize(world);
+                let system: Box<dyn System<In = In<T>, Out = ()>> = if SystemInput::kind() == 0 {
+                    Box::new(IntoSystem::into_system(
+                        move |In(t): In<T>, world: &mut World| {
+                            system.run(unsafe { transmute_unchecked(()) }, world)
+                        },
+                    ))
+                } else {
+                    Box::new(IntoSystem::into_system(
+                        move |In(t): In<T>, world: &mut World| {
+                            system.run(unsafe { transmute_unchecked(In(t)) }, world);
+                        },
+                    ))
+                };
                 actions.0.insert(
                     id.into(),
                     BoxedStorage {
                         boxed_action: Box::new(ActionStorage {
-                            action: Arc::new(Mutex::new(Box::new(system))),
+                            action: Arc::new(Mutex::new(system)),
                         }),
                         description: ActionDescription {
                             description: description.into(),

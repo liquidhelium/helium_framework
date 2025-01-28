@@ -4,7 +4,7 @@ pub use dock_buttons::*;
 use bevy::prelude::*;
 use egui::Ui;
 
-pub fn widget<M: 'static, S: IntoSystem<&'static mut Ui, (), M> + 'static>(
+pub fn widget<M: 'static, S: IntoSystem<In<&'static mut Ui>, (), M> + 'static>(
     world: &mut World,
     ui: &mut Ui,
     wdg: S,
@@ -24,4 +24,4 @@ pub fn widget<M: 'static, S: IntoSystem<&'static mut Ui, (), M> + 'static>(
 }
 
 #[derive(Resource)]
-struct CachedWidgetState<M, S: IntoSystem<&'static mut Ui, (), M> + 'static>(S::System);
+struct CachedWidgetState<M, S: IntoSystem<In<&'static mut Ui>, (), M> + 'static>(S::System);

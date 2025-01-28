@@ -1,3 +1,4 @@
+#![feature(core_intrinsics)]
 pub mod action;
 pub mod hotkeys;
 pub mod menu;
