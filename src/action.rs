@@ -192,7 +192,7 @@ impl ActionsExt for App {
             .resource_scope(|world, mut actions: Mut<'_, ActionRegistry>| {
                 let mut system = IntoSystem::into_system(action);
                 system.initialize(world);
-                let system: Box<dyn System<In = In<T>, Out = ()>> = if SystemInput::kind() == 0 {
+                let mut system: Box<dyn System<In = In<T>, Out = ()>> = if SystemInput::kind() == 0 {
                     Box::new(IntoSystem::into_system(
                         move |In(t): In<T>, world: &mut World| {
                             system.run(unsafe { transmute_unchecked(()) }, world)
@@ -205,6 +205,7 @@ impl ActionsExt for App {
                         },
                     ))
                 };
+                system.initialize(world);
                 actions.0.insert(
                     id.into(),
                     BoxedStorage {
