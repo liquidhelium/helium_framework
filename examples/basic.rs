@@ -15,9 +15,9 @@ fn main() {
         .add_plugins(HeliumFramework)
         .insert_resource(HeDockState(DockState::new(vec!["default".into()])));
     app.add_event::<ButtonClicked>();
-    app.register_action("maximize", "show mouse, events", it_works)
-        .register_action("basic.log_clicked", "log click times", log_button_clicked)
-        .register_action("quit", "quit", || {std::process::exit(0);});
+    app.reflect_system("maximize", "show mouse, events", it_works)
+        .reflect_system("basic.log_clicked", "log click times", log_button_clicked)
+        .reflect_system("quit", "quit", || {std::process::exit(0);});
     app.register_tab("default", "Default", default_tab, || true)
         .register_tab("default2", "Default2", default_tab, || true)
         .register_tab("default3", "Default3", default_tab, || true)
@@ -48,8 +48,9 @@ fn it_works(mut windows: Query<&mut Window>) {
         win.set_maximized(true);
     });
 }
-fn log_button_clicked(clickbutton: EventReader<ButtonClicked>) {
-    info!("{}", clickbutton.len());
+fn log_button_clicked(clickbutton: EventReader<ButtonClicked>, mut count: Local<usize>) {
+    *count += clickbutton.len();
+    info!("{}", *count);
 }
 
 fn default_tab(
@@ -67,7 +68,7 @@ fn default_tab(
         .clicked()
     {
         clickbutton.send(ButtonClicked);
-        action.run_action(&"basic.log_clicked".into(), ()).unwrap();
+        action.run_action(&"basic.log_clicked".into(), In(())).unwrap();
     }
 }
 

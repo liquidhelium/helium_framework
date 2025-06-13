@@ -1,5 +1,5 @@
 #![feature(core_intrinsics)]
-pub mod action;
+pub mod reflect_system;
 pub mod hotkeys;
 pub mod menu;
 pub mod tab_system;
@@ -7,7 +7,7 @@ pub mod utils;
 pub mod widgets;
 pub mod notifications;
 
-use action::ActionPlugin;
+use reflect_system::ActionPlugin;
 use bevy::app::Plugin;
 use hotkeys::HotkeyPlugin;
 use menu::MenuPlugin;
@@ -25,5 +25,5 @@ impl Plugin for HeliumFramework {
 }
 
 pub mod prelude {
-    pub use super::{action::*, hotkeys::*, menu::*, tab_system::*, utils::*, notifications::*, HeliumFramework};
+    pub use super::{reflect_system::*, hotkeys::*, menu::*, tab_system::*, utils::*, notifications::*, HeliumFramework};
 }

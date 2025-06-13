@@ -44,3 +44,6 @@ serde = ["egui_dock/serde", "smallvec/serde", "dep:serde"]
 
 [[example]]
 name = "basic"
+
+[profile.release]
+codegen-backend = "cranelift"

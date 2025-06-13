@@ -1,12 +1,12 @@
-use std::borrow::Cow;
+use std::{any::{Any, TypeId}, borrow::Cow, intrinsics::type_id};
 
-use bevy::{ecs::schedule::BoxedCondition, prelude::*, utils::HashMap};
+use bevy::{ecs::{schedule::BoxedCondition, system::SystemId}, prelude::*, reflect::Typed, utils::HashMap};
 use egui::{Ui, UiBuilder};
 use egui_dock::{DockState, TabViewer};
 use rust_i18n::t;
 use snafu::Snafu;
 
-use crate::utils::{identifier::Identifier, new_condition};
+use crate::{reflect_system::ReflectSystemId, utils::{identifier::Identifier, new_condition}};
 
 pub struct HeTabViewer<'a> {
     pub world: &'a mut World,
@@ -33,7 +33,7 @@ pub struct HeDockState(pub DockState<TabId>);
 pub type TabId = Identifier;
 
 pub struct TabStorage {
-    boxed: Box<dyn System<In = In<Ui>, Out = ()>>,
+    system_id: ReflectSystemId,
     avalible_condition: BoxedCondition,
     tab_title: Cow<'static, str>,
 }
@@ -62,12 +62,14 @@ impl TabStorage {
                     .layout(layout)
             )
         };
-
+        let system_id = self.system_id.system_id::<In<Ui>, ()>().
+            ok_or(TabError::InvalidType  {
+                name: self.tab_title.clone(),
+            })?;
         self.avalible_condition
             .run_readonly((), world)
             .then(|| {
-                self.boxed.run(child, world);
-                self.boxed.apply_deferred(world)
+                world.run_system_with_input(system_id, child);
             })
             .ok_or(TabError::NotAvalible {
                 name: self.tab_title.clone(),
@@ -83,6 +85,10 @@ pub type TabResult = Result<(), TabError>;
 pub enum TabError {
     #[snafu(display("Tab {name} is not avalible."))]
     NotAvalible { name: Cow<'static, str> },
+    #[snafu(display("Tab {name} is invalid."))]
+    InvalidType {
+        name: Cow<'static, str>,
+    }
 }
 
 #[derive(Resource, Deref, Default)]
@@ -111,29 +117,27 @@ pub trait TabRegistrationExt {
         &mut self,
         id: impl Into<TabId>,
         name: impl Into<Cow<'static, str>>,
-        system: impl IntoSystem<In<Ui>, (), M1>,
+        system: impl IntoSystem<In<Ui>, (), M1> + 'static,
         avalible_when: impl Condition<M2>,
     ) -> &mut Self;
 }
 
 impl TabRegistrationExt for App {
-    fn register_tab<M1, M2>(
+    fn register_tab<M1, M2,>(
         &mut self,
         id: impl Into<TabId>,
         name: impl Into<Cow<'static, str>>,
-        system: impl IntoSystem<In<Ui>, (), M1>,
+        system: impl IntoSystem<In<Ui>, (), M1> +'static,
         avalible_when: impl Condition<M2>,
     ) -> &mut Self {
         self.world_mut()
             .resource_scope(|world, mut registry: Mut<TabRegistry>| {
+                let system_id: bevy::ecs::system::SystemId<_, _> = world.register_system(system);
+                let system_id = ReflectSystemId::from_system_id(system_id);
                 registry.0.insert(
                     id.into(),
                     TabStorage {
-                        boxed: Box::new({
-                            let mut sys = IntoSystem::into_system(system);
-                            sys.initialize(world);
-                            sys
-                        }),
+                        system_id,
                         avalible_condition: {
                             let mut sys = new_condition(avalible_when);
                             sys.initialize(world);

@@ -10,7 +10,7 @@ use bevy::{
 use bevy_egui::EguiOutput;
 use smallvec::SmallVec;
 
-use crate::prelude::{ActionId, ActionRegistry};
+use crate::prelude::{ActionId, RSystemRegistry};
 use crate::utils::new_condition;
 pub enum TriggerType {
     Pressed,
@@ -162,9 +162,9 @@ fn dispatch_hotkey(world: &mut World) {
                     // todo: error handling
                     world
                         .resource_scope(
-                            |world: &mut World, mut actions: Mut<'_, ActionRegistry>| {
+                            |world: &mut World, mut actions: Mut<'_, RSystemRegistry>| {
                                 actions
-                                    .run_instant(id, trigger, world)
+                                    .run_instant(id, In(trigger), world)
                                     .or_else(|_| actions.run_instant(id, (), world))
                             },
                         )

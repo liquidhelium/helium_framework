@@ -9,7 +9,7 @@ use indexmap::IndexMap;
 use snafu::Snafu;
 
 use crate::{
-    prelude::{ActionId, ActionRegistry},
+    prelude::{ActionId, RSystemRegistry},
     utils::new_condition,
 };
 
@@ -113,7 +113,7 @@ impl MenuItemProvider for Button {
     fn ui(&mut self, ui: &mut Ui, world: &mut World, name: &str) {
         ui.add_enabled_ui(self.avalible.run_readonly((), world), |ui| {
             if ui.button(name).clicked() {
-                world.resource_scope(|world: &mut World, mut actions: Mut<ActionRegistry>| {
+                world.resource_scope(|world: &mut World, mut actions: Mut<RSystemRegistry>| {
                     let _ = actions.run_instant(&self.action, (), world).map_err(|err| {
                         bevy::prelude::error!("encountered error when running action: {}", err)
                     });
