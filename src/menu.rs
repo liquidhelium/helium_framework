@@ -1,7 +1,9 @@
 use std::{borrow::Cow, fmt::Debug};
 
 use bevy::{
-    app::{App, Plugin}, ecs::schedule::{BoxedCondition, Condition}, prelude::{Deref, DerefMut, Mut, Resource, World}
+    app::{App, Plugin},
+    ecs::schedule::{BoxedCondition, Condition},
+    prelude::{Deref, DerefMut, Mut, Resource, World},
 };
 use egui::Ui;
 use enum_dispatch::enum_dispatch;
@@ -14,7 +16,7 @@ use crate::{
 };
 
 pub fn show_menu_ui(ui: &mut Ui, world: &mut World) {
-    world.resource_scope(|world: &mut World, mut entry:Mut<EditorMenuEntrys>| {
+    world.resource_scope(|world: &mut World, mut entry: Mut<EditorMenuEntrys>| {
         entry.0.foreach_ui(ui, world);
     });
 }
@@ -53,7 +55,7 @@ pub trait MenuItemProvider {
             Some(item)
         }
     }
-    fn as_container(&mut self) -> Option<ItemAsContainer> {
+    fn as_container(&mut self) -> Option<ItemAsContainer<'_>> {
         None
     }
 }
@@ -159,7 +161,7 @@ impl ItemGroup {
             item.source.ui(ui, world, &item.name);
         }
     }
-    pub fn as_container(&mut self) -> ItemAsContainer {
+    pub fn as_container(&mut self) -> ItemAsContainer<'_> {
         ItemAsContainer {
             container_item: Box::new(ItemGroupAsContainer { group: self }),
         }
@@ -218,7 +220,7 @@ impl MenuItemProvider for Category {
     fn find_subitem_mut(&mut self, sub_id: &str) -> Option<&mut MenuItem> {
         self.group.items.get_mut(sub_id)
     }
-    fn as_container(&mut self) -> Option<ItemAsContainer> {
+    fn as_container(&mut self) -> Option<ItemAsContainer<'_>> {
         Some(self.group.as_container())
     }
 }

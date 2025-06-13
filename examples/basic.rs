@@ -17,13 +17,19 @@ fn main() {
     app.add_event::<ButtonClicked>();
     app.reflect_system("maximize", "show mouse, events", it_works)
         .reflect_system("basic.log_clicked", "log click times", log_button_clicked)
-        .reflect_system("quit", "quit", || {std::process::exit(0);});
+        // Explict type parameter to make the compiler happy
+        .reflect_system::<_, _, ()>("quit", "quit", || {
+            std::process::exit(0);
+        });
     app.register_tab("default", "Default", default_tab, || true)
         .register_tab("default2", "Default2", default_tab, || true)
         .register_tab("default3", "Default3", default_tab, || true)
         .register_tab("default4", "Default4", default_tab, || true)
         .register_tab("default5", "Default5", default_tab, || true);
-    app.register_hotkey("maximize", [Hotkey::new_global([KeyCode::ControlLeft, KeyCode::KeyM])]);
+    app.register_hotkey(
+        "maximize",
+        [Hotkey::new_global([KeyCode::ControlLeft, KeyCode::KeyM])],
+    );
     app.menu_context(|mut ctx| {
         ctx.with_sub_menu("file", "File".into(), 0, |mut ctx| {
             ctx.add("quit", "Quit".into(), Button::new("quit"), 0);
@@ -32,7 +38,7 @@ fn main() {
             ctx.add(
                 "win",
                 "".into(),
-                Custom(Box::new(|ui, world, _| widget(world,ui,dock_button))),
+                Custom(Box::new(|ui, world, _| widget(world, ui, dock_button))),
                 0,
             );
         });
@@ -54,7 +60,7 @@ fn log_button_clicked(clickbutton: EventReader<ButtonClicked>, mut count: Local<
 }
 
 fn default_tab(
-    In(mut ui): In<Ui>,
+    InMut(ui): InMut<Ui>,
     mut clickbutton: EventWriter<ButtonClicked>,
     mut action: Actions,
 ) {
@@ -68,7 +74,9 @@ fn default_tab(
         .clicked()
     {
         clickbutton.send(ButtonClicked);
-        action.run_action(&"basic.log_clicked".into(), In(())).unwrap();
+        action
+            .run_action(&"basic.log_clicked".into(), In(()))
+            .unwrap();
     }
 }
 

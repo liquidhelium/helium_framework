@@ -1,15 +1,11 @@
 use std::any::{type_name, TypeId};
 use std::intrinsics::transmute_unchecked;
-use std::mem::transmute;
-use std::sync::Arc;
 
-use bevy::ecs::system::{RegisteredSystemError, SystemId, SystemParam};
+use bevy::ecs::system::{SystemId, SystemParam};
 use bevy::prelude::*;
-use bevy::reflect::{TypeInfo, Typed};
+use bevy::reflect::Typed;
 use bevy::utils::HashMap;
-use egui::mutex::Mutex;
-use sealed::Sealed;
-use snafu::{ResultExt, Snafu};
+use snafu::Snafu;
 
 #[derive(Clone, Copy)]
 pub struct ReflectSystemId {
@@ -22,7 +18,7 @@ impl ReflectSystemId {
     pub fn from_system_id<I: bevy::prelude::SystemInput + 'static, O: 'static>(
         system_id: SystemId<I, O>,
     ) -> Self {
-        Self::from_entity::<I,O>(system_id.entity())
+        Self::from_entity::<I, O>(system_id.entity())
     }
     pub fn system_id<I: bevy::prelude::SystemInput + 'static, O: 'static>(
         &self,
@@ -33,7 +29,9 @@ impl ReflectSystemId {
             None
         }
     }
-    pub fn from_entity<I: bevy::prelude::SystemInput + 'static, O: 'static>(entity: Entity) -> Self {
+    pub fn from_entity<I: bevy::prelude::SystemInput + 'static, O: 'static>(
+        entity: Entity,
+    ) -> Self {
         let in_type = TypeId::of::<I>();
         let out_type = TypeId::of::<O>();
         Self {
@@ -64,33 +62,16 @@ where
         Ok(output)
     } else {
         Err(ActionError::RegistrationError {
-            message: format!("Failed to run system with input"),
+            message: "Failed to run system with input".to_string(),
         })
     }
 }
 
 use crate::utils::identifier::Identifier;
 
-pub struct BoxedStorage {
-    boxed_action: Box<dyn DynActionStorage>,
-    description: ActionDescription,
-}
-
 #[derive(Deref)]
 pub struct ActionDescription {
     description: String,
-}
-
-impl BoxedStorage {
-    fn get_command(&self, input: Box<dyn Reflect>) -> Result<BoxedFn, String> {
-        self.boxed_action.get_command(input)
-    }
-    pub fn get_description(&self) -> &str {
-        &self.description
-    }
-    pub fn input_type_info(&self) -> &'static TypeInfo {
-        self.boxed_action.input_type_info()
-    }
 }
 
 pub type ActionId = Identifier;
@@ -136,38 +117,6 @@ impl RSystemRegistry {
     }
 }
 
-type BoxedFn = Box<dyn FnOnce(&mut World) + Send + Sync + 'static>;
-
-pub trait DynActionStorage: Send + Sync {
-    fn get_command(&self, input: Box<dyn Reflect>) -> Result<BoxedFn, String>;
-    fn input_type_info(&self) -> &'static TypeInfo;
-}
-
-pub struct ActionStorage<Input: ActionArgument> {
-    action: Arc<Mutex<Box<dyn System<In = In<Input>, Out = ()>>>>,
-}
-
-impl<Input: ActionArgument> DynActionStorage for ActionStorage<Input> {
-    fn get_command(
-        &self,
-        input: Box<dyn Reflect>,
-    ) -> Result<Box<dyn FnOnce(&mut World) + Send + Sync + 'static>, String> {
-        let owned_action = Arc::clone(&self.action);
-        let input = *input
-            .into_any()
-            .downcast::<Input>()
-            .map_err(|_| type_name::<Input>().to_string())?;
-        Ok(Box::new(move |world| {
-            let lock = &mut owned_action.lock();
-            lock.run(input, world);
-            lock.apply_deferred(world);
-        }))
-    }
-    fn input_type_info(&self) -> &'static TypeInfo {
-        Input::type_info()
-    }
-}
-
 #[derive(SystemParam)]
 pub struct Actions<'w, 's> {
     commands: Commands<'w, 's>,
@@ -190,26 +139,28 @@ impl Actions<'_, '_> {
             let input1 = unsafe { transmute_unchecked::<_, I::Param<'static>>(input) };
             let id1 = id.clone();
             self.commands.queue(move |world: &mut World| {
-                if let Err(err)= get.map(|id| {
-                    {
-                        let system_id = id;
-                        let system_id: SystemId<I::Param<'static>, ()> =
-                            system_id.system_id().ok_or(ActionError::MismatchInput {
-                                // TODO
-                                expected_type_name: std::format!("{:?}", system_id.in_type),
-                                found_type_name: type_name::<I::Param<'static>>().to_owned(),
-                            })?;
-                        let e = world.run_system_with_input(system_id, input1.into_inner());
-                        if let Ok(output) = e {
-                            Ok(output)
-                        } else {
-                            Err(ActionError::RegistrationError {
-                                message: "Failed to run system with input".to_string(),
-                            })
+                if let Err(err) = get
+                    .map(|id| {
+                        {
+                            let system_id = id;
+                            let system_id: SystemId<I::Param<'static>, ()> =
+                                system_id.system_id().ok_or(ActionError::MismatchInput {
+                                    // TODO
+                                    expected_type_name: std::format!("{:?}", system_id.in_type),
+                                    found_type_name: type_name::<I::Param<'static>>().to_owned(),
+                                })?;
+                            let e = world.run_system_with_input(system_id, input1.into_inner());
+                            if let Ok(output) = e {
+                                Ok(output)
+                            } else {
+                                Err(ActionError::RegistrationError {
+                                    message: "Failed to run system with input".to_string(),
+                                })
+                            }
                         }
-                    }
-                })
-                .unwrap() {
+                    })
+                    .unwrap()
+                {
                     error!("Failed to run action {}: {:?}", id1, err);
                 }
             });
@@ -236,7 +187,7 @@ pub enum ActionError {
 }
 
 pub trait ActionsExt {
-    fn reflect_system<'i, M, I: InputSubset<'i> + Send + Sync +'static, O: Reflect>(
+    fn reflect_system<'i, M, I: InputSubset<'i> + Send + Sync + 'static, O: Reflect>(
         &mut self,
         id: impl Into<ActionId>,
         description: impl Into<String>,
@@ -246,7 +197,6 @@ pub trait ActionsExt {
         <I as bevy::prelude::SystemInput>::Param<'static>:
             InputSubset<'static> + 'static + Send + Sync,
         <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: Reflect;
-
 }
 
 mod sealed {
@@ -283,7 +233,7 @@ impl<'a, T: 'static> InputSubset<'a> for InMut<'a, T> {
 }
 
 impl ActionsExt for App {
-    fn reflect_system<'i, M, I: InputSubset<'i> + Send + Sync +'static, O: Reflect>(
+    fn reflect_system<'i, M, I: InputSubset<'i> + Send + Sync + 'static, O: Reflect>(
         &mut self,
         id: impl Into<ActionId>,
         description: impl Into<String>,
@@ -300,9 +250,7 @@ impl ActionsExt for App {
                 let rid = world.register_system(action);
                 actions.0.insert(
                     id.clone(),
-                    ReflectSystemId::from_entity::<I::Param<'static>, O>(
-                        rid.entity(),
-                    ),
+                    ReflectSystemId::from_entity::<I::Param<'static>, O>(rid.entity()),
                 );
             });
         self

@@ -1,4 +1,7 @@
-use bevy::{ecs::schedule::BoxedCondition, prelude::{Condition, IntoSystem, System}};
+use bevy::{
+    ecs::schedule::BoxedCondition,
+    prelude::{Condition, IntoSystem, System},
+};
 
 pub mod identifier;
 

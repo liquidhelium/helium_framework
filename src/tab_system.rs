@@ -1,12 +1,15 @@
-use std::{any::{Any, TypeId}, borrow::Cow, intrinsics::type_id};
+use std::borrow::Cow;
 
-use bevy::{ecs::{schedule::BoxedCondition, system::SystemId}, prelude::*, reflect::Typed, utils::HashMap};
-use egui::{Ui, UiBuilder};
+use bevy::{ecs::schedule::BoxedCondition, prelude::*, utils::HashMap};
+use egui::Ui;
 use egui_dock::{DockState, TabViewer};
 use rust_i18n::t;
 use snafu::Snafu;
 
-use crate::{reflect_system::ReflectSystemId, utils::{identifier::Identifier, new_condition}};
+use crate::{
+    reflect_system::ReflectSystemId,
+    utils::{identifier::Identifier, new_condition},
+};
 
 pub struct HeTabViewer<'a> {
     pub world: &'a mut World,
@@ -53,23 +56,25 @@ pub fn tab_opened(tab: impl Into<TabId>) -> impl Condition<()> {
 
 impl TabStorage {
     pub fn run_with(&mut self, world: &mut World, ui: &mut Ui) -> TabResult {
-        let child = {
-            let max_rect = ui.max_rect();
-            let layout = *ui.layout();
-            ui.new_child(
-                UiBuilder::new()
-                    .max_rect(max_rect)
-                    .layout(layout)
-            )
-        };
-        let system_id = self.system_id.system_id::<In<Ui>, ()>().
-            ok_or(TabError::InvalidType  {
-                name: self.tab_title.clone(),
-            })?;
+        // let child = {
+        //     let max_rect = ui.max_rect();
+        //     let layout = *ui.layout();
+        //     ui.new_child(
+        //         UiBuilder::new()
+        //             .max_rect(max_rect)
+        //             .layout(layout)
+        //     )
+        // };
+        let system_id =
+            self.system_id
+                .system_id::<InMut<'static, Ui>, ()>()
+                .ok_or(TabError::InvalidType {
+                    name: self.tab_title.clone(),
+                })?;
         self.avalible_condition
             .run_readonly((), world)
             .then(|| {
-                world.run_system_with_input(system_id, child);
+                world.run_system_with_input(system_id, ui).unwrap();
             })
             .ok_or(TabError::NotAvalible {
                 name: self.tab_title.clone(),
@@ -86,9 +91,7 @@ pub enum TabError {
     #[snafu(display("Tab {name} is not avalible."))]
     NotAvalible { name: Cow<'static, str> },
     #[snafu(display("Tab {name} is invalid."))]
-    InvalidType {
-        name: Cow<'static, str>,
-    }
+    InvalidType { name: Cow<'static, str> },
 }
 
 #[derive(Resource, Deref, Default)]
@@ -117,17 +120,17 @@ pub trait TabRegistrationExt {
         &mut self,
         id: impl Into<TabId>,
         name: impl Into<Cow<'static, str>>,
-        system: impl IntoSystem<In<Ui>, (), M1> + 'static,
+        system: impl IntoSystem<InMut<'static, Ui>, (), M1> + 'static,
         avalible_when: impl Condition<M2>,
     ) -> &mut Self;
 }
 
 impl TabRegistrationExt for App {
-    fn register_tab<M1, M2,>(
+    fn register_tab<M1, M2>(
         &mut self,
         id: impl Into<TabId>,
         name: impl Into<Cow<'static, str>>,
-        system: impl IntoSystem<In<Ui>, (), M1> +'static,
+        system: impl IntoSystem<InMut<'static, Ui>, (), M1> + 'static,
         avalible_when: impl Condition<M2>,
     ) -> &mut Self {
         self.world_mut()

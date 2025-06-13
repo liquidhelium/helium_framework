@@ -1,8 +1,12 @@
 use bevy::prelude::*;
 
-use crate::{tab_system::TabRegistry, prelude::HeDockState};
+use crate::{prelude::HeDockState, tab_system::TabRegistry};
 
-pub fn dock_button(In(ui): In<&'static mut egui::Ui>, mut state: ResMut<HeDockState>, registry: Res<TabRegistry>) {
+pub fn dock_button(
+    In(ui): In<&'static mut egui::Ui>,
+    mut state: ResMut<HeDockState>,
+    registry: Res<TabRegistry>,
+) {
     let state = &mut state.0;
     let opened: Vec<_> = state.iter_all_tabs().map(|i| i.1).collect();
     let mut to_remove = None;
