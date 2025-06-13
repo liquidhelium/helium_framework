@@ -44,17 +44,18 @@ impl ReflectSystemId {
 
 fn run_system_reflect<'i, I, O>(
     world: &mut World,
-    system_id: ReflectSystemId,
+    meta: &ReflectSystemMeta,
     input: I,
 ) -> Result<O, ActionError>
 where
     I: SystemInput + InputSubset<'i> + 'static,
-    I::Inner<'i>: Reflect,
-    O: 'static + Reflect,
+    I::Inner<'i>: 'static,
+    O: 'static,
 {
+    let system_id = meta.system_id;
     let system_id: SystemId<I, O> = system_id.system_id().ok_or(ActionError::MismatchInput {
         // TODO
-        expected_type_name: format!("{:?}", system_id.in_type),
+        expected_type_name: meta.input.clone(),
         found_type_name: type_name::<I>().to_owned(),
     })?;
     let e = world.run_system_with_input(system_id, input.into_inner());
@@ -76,12 +77,21 @@ pub struct ActionDescription {
 
 pub type ActionId = Identifier;
 
-pub trait ActionArgument: Reflect + Typed {}
+pub trait ActionArgument: 'static + Typed {}
 
-impl<T> ActionArgument for T where T: Reflect + Typed {}
+impl<T> ActionArgument for T where T: 'static + Typed {}
+
+#[derive(Clone)]
+pub struct ReflectSystemMeta {
+    pub id: ActionId,
+    pub description: String,
+    pub system_id: ReflectSystemId,
+    pub input: String,
+    pub output: String,
+}
 
 #[derive(Resource, Default, Deref)]
-pub struct RSystemRegistry(HashMap<ActionId, ReflectSystemId>);
+pub struct RSystemRegistry(HashMap<ActionId, ReflectSystemMeta>);
 
 impl RSystemRegistry {
     pub fn run_instant<'i, I: InputSubset<'i>>(
@@ -92,11 +102,11 @@ impl RSystemRegistry {
     ) -> Result<(), ActionError>
     where
         <I as bevy::prelude::SystemInput>::Param<'static>: InputSubset<'static> + 'static,
-        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: Reflect,
+        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: 'static,
     {
         self.run_instant_ret::<I, ()>(id, input, world)
     }
-    pub fn run_instant_ret<'i, I: InputSubset<'i>, O: Reflect>(
+    pub fn run_instant_ret<'i, I: InputSubset<'i>, O: 'static>(
         &mut self,
         id: &ActionId,
         input: I,
@@ -104,16 +114,20 @@ impl RSystemRegistry {
     ) -> Result<O, ActionError>
     where
         <I as bevy::prelude::SystemInput>::Param<'static>: InputSubset<'static> + 'static,
-        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: Reflect,
+        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: 'static,
     {
         self.0
             .get(id)
             .ok_or(ActionError::NotFound { id: id.to_string() })
-            .map(|o| {
-                run_system_reflect::<I::Param<'static>, O>(world, *o, unsafe {
+            .map(|meta| {
+                run_system_reflect::<I::Param<'static>, O>(world, meta, unsafe {
                     transmute_unchecked::<_, I::Param<'static>>(input)
                 })
             })?
+    }
+
+    pub fn get_meta(&self, id: &ActionId) -> Option<&ReflectSystemMeta> {
+        self.0.get(id)
     }
 }
 
@@ -124,7 +138,7 @@ pub struct Actions<'w, 's> {
 }
 
 impl Actions<'_, '_> {
-    pub fn run_action<'i, I: InputSubset<'i> + Send + Sync>(
+    pub fn run_action<'i, I: InputSubset<'i> + Send + Sync + 'static>(
         &mut self,
         id: &ActionId,
         input: I,
@@ -132,21 +146,21 @@ impl Actions<'_, '_> {
     where
         <I as bevy::prelude::SystemInput>::Param<'static>:
             InputSubset<'static> + 'static + Send + Sync,
-        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: Reflect,
+        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: 'static,
     {
         if self.storages.0.contains_key(id) {
-            let get = self.storages.0.get(id).copied();
+            let get = self.storages.0.get(id).cloned();
             let input1 = unsafe { transmute_unchecked::<_, I::Param<'static>>(input) };
             let id1 = id.clone();
             self.commands.queue(move |world: &mut World| {
                 if let Err(err) = get
-                    .map(|id| {
+                    .map(|meta| {
                         {
-                            let system_id = id;
+                            let system_id = meta.system_id;
                             let system_id: SystemId<I::Param<'static>, ()> =
                                 system_id.system_id().ok_or(ActionError::MismatchInput {
                                     // TODO
-                                    expected_type_name: std::format!("{:?}", system_id.in_type),
+                                    expected_type_name: meta.input,
                                     found_type_name: type_name::<I::Param<'static>>().to_owned(),
                                 })?;
                             let e = world.run_system_with_input(system_id, input1.into_inner());
@@ -187,7 +201,7 @@ pub enum ActionError {
 }
 
 pub trait ActionsExt {
-    fn reflect_system<'i, M, I: InputSubset<'i> + Send + Sync + 'static, O: Reflect>(
+    fn reflect_system<'i, M, I: InputSubset<'i> + Send + Sync + 'static, O: 'static>(
         &mut self,
         id: impl Into<ActionId>,
         description: impl Into<String>,
@@ -196,7 +210,7 @@ pub trait ActionsExt {
     where
         <I as bevy::prelude::SystemInput>::Param<'static>:
             InputSubset<'static> + 'static + Send + Sync,
-        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: Reflect;
+        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: 'static;
 }
 
 mod sealed {
@@ -233,7 +247,7 @@ impl<'a, T: 'static> InputSubset<'a> for InMut<'a, T> {
 }
 
 impl ActionsExt for App {
-    fn reflect_system<'i, M, I: InputSubset<'i> + Send + Sync + 'static, O: Reflect>(
+    fn reflect_system<'i, M, I: InputSubset<'i> + Send + Sync + 'static, O: 'static>(
         &mut self,
         id: impl Into<ActionId>,
         description: impl Into<String>,
@@ -242,16 +256,23 @@ impl ActionsExt for App {
     where
         <I as bevy::prelude::SystemInput>::Param<'static>:
             InputSubset<'static> + 'static + Send + Sync,
-        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: Reflect,
+        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: 'static,
     {
         let id = id.into();
+        let description = description.into();
+        let input_type_name = type_name::<I::Param<'static>>().to_string();
+        let output_type_name = type_name::<O>().to_string();
         self.world_mut()
             .resource_scope(|world, mut actions: Mut<'_, RSystemRegistry>| {
                 let rid = world.register_system(action);
-                actions.0.insert(
-                    id.clone(),
-                    ReflectSystemId::from_entity::<I::Param<'static>, O>(rid.entity()),
-                );
+                let meta = ReflectSystemMeta {
+                    id: id.clone(),
+                    description: description.clone(),
+                    system_id: ReflectSystemId::from_entity::<I::Param<'static>, O>(rid.entity()),
+                    input: input_type_name,
+                    output: output_type_name,
+                };
+                actions.0.insert(id.clone(), meta);
             });
         self
     }

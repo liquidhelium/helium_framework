@@ -17,6 +17,16 @@ fn main() {
     app.add_event::<ButtonClicked>();
     app.reflect_system("maximize", "show mouse, events", it_works)
         .reflect_system("basic.log_clicked", "log click times", log_button_clicked)
+        .reflect_system(
+            "basic.log_current",
+            "log current time",
+            log_current,
+        )
+        .reflect_system(
+            "basic.log_reference",
+            "log current time by reference",
+            log_reference,
+        )
         // Explict type parameter to make the compiler happy
         .reflect_system::<_, _, ()>("quit", "quit", || {
             std::process::exit(0);
@@ -25,7 +35,8 @@ fn main() {
         .register_tab("default2", "Default2", default_tab, || true)
         .register_tab("default3", "Default3", default_tab, || true)
         .register_tab("default4", "Default4", default_tab, || true)
-        .register_tab("default5", "Default5", default_tab, || true);
+        .register_tab("default5", "Default5", default_tab, || true)
+        .register_tab("another", "Another", another_tab, || true);
     app.register_hotkey(
         "maximize",
         [Hotkey::new_global([KeyCode::ControlLeft, KeyCode::KeyM])],
@@ -54,6 +65,16 @@ fn it_works(mut windows: Query<&mut Window>) {
         win.set_maximized(true);
     });
 }
+
+fn log_current(In(time): In<f32>) {
+    info!("Current time: {}", time);
+}
+
+fn log_reference(InMut(time): InMut<f32>) {
+    info!("Current time: {}", time);
+    *time += 1.0; // just to show that we can modify the value
+}
+
 fn log_button_clicked(clickbutton: EventReader<ButtonClicked>, mut count: Local<usize>) {
     *count += clickbutton.len();
     info!("{}", *count);
@@ -63,6 +84,8 @@ fn default_tab(
     InMut(ui): InMut<Ui>,
     mut clickbutton: EventWriter<ButtonClicked>,
     mut action: Actions,
+    action_registry: Res<RSystemRegistry>,
+    time: Res<Time>
 ) {
     ui.heading("Helium Framework test");
     ui.label("This one works!");
@@ -75,8 +98,36 @@ fn default_tab(
     {
         clickbutton.send(ButtonClicked);
         action
-            .run_action(&"basic.log_clicked".into(), In(()))
+            .run_action(&"basic.log_clicked".into(), ())
             .unwrap();
+    }
+    if ui.button("Log current time").clicked() {
+        action.run_action(&"basic.log_current".into(), In(time.elapsed_secs())).unwrap();
+    }
+    // list all registered actions and in/outputs
+    ui.label("Registered actions:");
+    for (id, meta) in action_registry.iter() {
+        ui.label(format!(
+            "Action: {}, Inputs: {:?}, Outputs: {:?}",
+            id,
+            meta.input,
+            meta.output
+        ));
+    }
+}
+
+fn another_tab(
+    InMut(ui): InMut<Ui>,
+    world: &mut World,
+) {
+    ui.heading("Another tab");
+    ui.label("This is another tab.");
+    if ui.button("click this to log time(by reference)").clicked() {
+        let elapsed_secs = &mut world.resource::<Time>().elapsed_secs();
+        world.resource_scope(|world: &mut World, mut actions: Mut<'_, RSystemRegistry>| {
+            actions.run_instant(&"basic.log_reference".into(), InMut(elapsed_secs), world).unwrap();
+        });
+        info!("time added 1.0, time: {}", elapsed_secs);
     }
 }
 
