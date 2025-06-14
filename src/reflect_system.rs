@@ -2,9 +2,9 @@ use std::any::{type_name, TypeId};
 use std::intrinsics::transmute_unchecked;
 
 use bevy::ecs::system::{SystemId, SystemParam};
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::reflect::Typed;
-use bevy::utils::HashMap;
 use snafu::Snafu;
 
 #[derive(Clone, Copy)]
@@ -58,7 +58,7 @@ where
         expected_type_name: meta.input.clone(),
         found_type_name: type_name::<I>().to_owned(),
     })?;
-    let e = world.run_system_with_input(system_id, input.into_inner());
+    let e = world.run_system_with(system_id, input.into_inner());
     if let Ok(output) = e {
         Ok(output)
     } else {
@@ -163,7 +163,7 @@ impl Actions<'_, '_> {
                                     expected_type_name: meta.input,
                                     found_type_name: type_name::<I::Param<'static>>().to_owned(),
                                 })?;
-                            let e = world.run_system_with_input(system_id, input1.into_inner());
+                            let e = world.run_system_with(system_id, input1.into_inner());
                             if let Ok(output) = e {
                                 Ok(output)
                             } else {

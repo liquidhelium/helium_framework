@@ -11,7 +11,9 @@ use helium_framework::{
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
-        .add_plugins(EguiPlugin)
+        .add_plugins(EguiPlugin {
+            enable_multipass_for_primary_context: true,
+        })
         .add_plugins(HeliumFramework)
         .insert_resource(HeDockState(DockState::new(vec!["default".into()])));
     app.add_event::<ButtonClicked>();
@@ -131,9 +133,9 @@ fn another_tab(
     }
 }
 
-fn egui_main(world: &mut World) {
+fn egui_main(world: &mut World) -> Result<()> {
     let mut egui_context = world.query_filtered::<&mut EguiContext, With<PrimaryWindow>>();
-    let mut binding = egui_context.single_mut(world);
+    let mut binding = egui_context.single_mut(world)?;
     let ctx = &binding.get_mut().clone();
     egui::TopBottomPanel::top("menu").show(ctx, |ui| {
         ui.horizontal(|ui| {
@@ -151,5 +153,6 @@ fn egui_main(world: &mut World) {
                 },
             );
         })
-    })
+    });
+    Ok(())
 }

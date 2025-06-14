@@ -1,8 +1,7 @@
 use bevy::{
     app::{Plugin, Update},
     ecs::{
-        query::With,
-        system::{Query, ResMut, Resource},
+        query::With, resource::Resource, system::{Query, ResMut}
     },
     prelude::{Deref, DerefMut},
     window::PrimaryWindow,
@@ -36,7 +35,7 @@ fn show_egui_notifies(
     mut context: Query<&mut EguiContext, With<PrimaryWindow>>,
     mut toasts: ResMut<ToastsStorage>,
 ) {
-    if let Ok(mut ctx) = context.get_single_mut() {
+    if let Ok(mut ctx) = context.single_mut() {
         toasts.show(ctx.get_mut())
     }
 }

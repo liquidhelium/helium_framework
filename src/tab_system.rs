@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use bevy::{ecs::schedule::BoxedCondition, prelude::*, utils::HashMap};
+use bevy::{ecs::schedule::BoxedCondition, platform::collections::HashMap, prelude::*};
 use egui::Ui;
 use egui_dock::{DockState, TabViewer};
 use rust_i18n::t;
@@ -74,7 +74,7 @@ impl TabStorage {
         self.avalible_condition
             .run_readonly((), world)
             .then(|| {
-                world.run_system_with_input(system_id, ui).unwrap();
+                world.run_system_with(system_id, ui).unwrap();
             })
             .ok_or(TabError::NotAvalible {
                 name: self.tab_title.clone(),

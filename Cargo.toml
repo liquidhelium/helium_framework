@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.15.1", default-features = false, features = [
+bevy = { version = "0.16", default-features = false, features = [
     # "animation",
     "bevy_asset",
     # "bevy_scene",
@@ -24,12 +24,16 @@ bevy = { version = "0.15.1", default-features = false, features = [
     # "webgl2",
     "wayland",
     "multi_threaded",
-    "bevy_gizmos"
+    "bevy_gizmos",
+    # 0.16 新增推荐特性
+    "std",
+    "async_executor",
+    "bevy_log"
 ] }
-bevy_egui = "0.32.0"
-egui = "0.30.0"
-egui_dock = "0.15.0"
-egui-notify = "0.18.0"
+bevy_egui = "0.34"
+egui = "0.31"
+egui_dock = "0.16"
+egui-notify = "0.19.0"
 snafu = "0.8"
 smallvec = "1"
 serde = {version = "1", features = ["derive"], optional = true}
