@@ -5,6 +5,7 @@ use egui::Ui;
 use egui_dock::{DockState, TabViewer};
 use rust_i18n::t;
 use snafu::Snafu;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     reflect_system::ReflectSystemId,
@@ -30,7 +31,7 @@ impl<'a> TabViewer for HeTabViewer<'a> {
     }
 }
 
-#[derive(Debug, Resource)]
+#[derive(Debug, Resource,Serialize, Deserialize)]
 pub struct HeDockState(pub DockState<TabId>);
 
 pub type TabId = Identifier;
