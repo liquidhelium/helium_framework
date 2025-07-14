@@ -1,6 +1,6 @@
 use bevy::{prelude::*, window::PrimaryWindow};
 use bevy_egui::{EguiContext, EguiPlugin};
-use egui::Ui;
+use egui::{style::Selection, Color32, Ui, Visuals};
 use egui_dock::{DockArea, DockState};
 use helium_framework::{
     menu::{show_menu_ui, Button, Custom, MenuExt},
@@ -12,7 +12,7 @@ fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin {
-            enable_multipass_for_primary_context: true,
+            enable_multipass_for_primary_context: false,
         })
         .add_plugins(HeliumFramework)
         .insert_resource(HeDockState(DockState::new(vec!["default".into()])));
@@ -137,6 +137,15 @@ fn egui_main(world: &mut World) -> Result<()> {
     let mut egui_context = world.query_filtered::<&mut EguiContext, With<PrimaryWindow>>();
     let mut binding = egui_context.single_mut(world)?;
     let ctx = &binding.get_mut().clone();
+    ctx.set_visuals(Visuals {
+        dark_mode: true,
+        selection: Selection {
+            bg_fill: rgba(0, 120, 212, 1),
+            ..Visuals::dark().selection
+        },
+        extreme_bg_color: rgba(23, 23, 23, 1),
+        ..Visuals::dark()
+    });
     egui::TopBottomPanel::top("menu").show(ctx, |ui| {
         ui.horizontal(|ui| {
             show_menu_ui(ui, world);
@@ -155,4 +164,8 @@ fn egui_main(world: &mut World) -> Result<()> {
         })
     });
     Ok(())
+}
+
+fn rgba(r: u8, g: u8, b: u8, _: u8) -> Color32 {
+    Color32::from_rgb(r, g, b)
 }

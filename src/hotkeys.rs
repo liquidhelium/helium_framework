@@ -2,7 +2,7 @@
 //! 工作方式：多个键时，最后一个键使用 [`TriggerType`] 定义的触发方式，其他键要保持按下。
 
 use bevy::platform::collections::HashMap;
-use bevy::{log::*,ecs::schedule::BoxedCondition, prelude::*, window::PrimaryWindow};
+use bevy::{ecs::schedule::BoxedCondition, log::*, prelude::*, window::PrimaryWindow};
 use bevy_egui::EguiOutput;
 use smallvec::SmallVec;
 
@@ -15,22 +15,45 @@ pub enum TriggerType {
     Repeat,
 }
 
+pub struct RuntimeTrigger {
+    pub trigger_type: RuntimeTriggerType,
+    pub code: KeyCode,
+}
+
 #[derive(Clone, Copy, Reflect, Debug)]
-pub enum RuntimeTrigger {
+pub enum RuntimeTriggerType {
     Pressed,
     Pressing,
     Released,
 }
 
 impl RuntimeTrigger {
+    pub fn pressed(code: KeyCode) -> Self {
+        Self {
+            trigger_type: RuntimeTriggerType::Pressed,
+            code,
+        }
+    }
+    pub fn pressing(code: KeyCode) -> Self {
+        Self {
+            trigger_type: RuntimeTriggerType::Pressing,
+            code,
+        }
+    }
+    pub fn released(code: KeyCode) -> Self {
+        Self {
+            trigger_type: RuntimeTriggerType::Released,
+            code,
+        }
+    }
     pub fn is_pressed(&self) -> bool {
-        matches!(self, Self::Pressed)
+        matches!(self.trigger_type, RuntimeTriggerType::Pressed)
     }
     pub fn is_pressing(&self) -> bool {
-        matches!(self, Self::Pressing)
+        matches!(self.trigger_type, RuntimeTriggerType::Pressing)
     }
     pub fn is_released(&self) -> bool {
-        matches!(self, Self::Released)
+        matches!(self.trigger_type, RuntimeTriggerType::Released)
     }
 }
 
@@ -42,17 +65,17 @@ impl TriggerType {
     ) -> Option<RuntimeTrigger> {
         use TriggerType::*;
         let runtime_trigger = match self {
-            Pressed if input.just_pressed(code) => Some(RuntimeTrigger::Pressed),
-            Released if input.just_released(code) => Some(RuntimeTrigger::Released),
+            Pressed if input.just_pressed(code) => Some(RuntimeTrigger::pressed(code)),
+            Released if input.just_released(code) => Some(RuntimeTrigger::released(code)),
             PressAndRelease => input
                 .just_pressed(code)
-                .then_some(RuntimeTrigger::Pressed)
+                .then_some(RuntimeTrigger::pressed(code))
                 .or_else(|| {
                     input
                         .just_released(code)
-                        .then_some(RuntimeTrigger::Released)
+                        .then_some(RuntimeTrigger::released(code))
                 }),
-            Repeat if input.pressed(code) => Some(RuntimeTrigger::Pressing),
+            Repeat if input.pressed(code) => Some(RuntimeTrigger::pressing(code)),
             _ => None,
         };
         if input.just_released(code) {
@@ -114,7 +137,7 @@ impl Hotkey {
     pub fn trigger_result(&mut self, world: &mut World) -> Option<RuntimeTrigger> {
         let not_editing_text = !world
             .query_filtered::<&EguiOutput, With<PrimaryWindow>>()
-            .get_single(world)
+            .single(world)
             .is_ok_and(|e| e.platform_output.mutable_text_under_cursor);
         let has_modifier = self.key.contains(&KeyCode::AltLeft)
             || self.key.contains(&KeyCode::AltRight)
