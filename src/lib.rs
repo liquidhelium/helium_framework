@@ -1,7 +1,7 @@
 // transmute_unchecked
 #![feature(core_intrinsics)]
 pub mod hotkeys;
-pub mod menu;
+pub mod menu_system;
 pub mod notifications;
 pub mod reflect_system;
 pub mod tab_system;
@@ -10,7 +10,7 @@ pub mod widgets;
 
 use bevy::app::Plugin;
 use hotkeys::HotkeyPlugin;
-use menu::MenuPlugin;
+use menu_system::MenuSystemPlugin;
 use notifications::NotificationPlugin;
 use reflect_system::ActionPlugin;
 use rust_i18n::i18n;
@@ -25,7 +25,7 @@ impl Plugin for HeliumFramework {
             ActionPlugin,
             HotkeyPlugin,
             TabPlugin,
-            MenuPlugin,
+            MenuSystemPlugin,
             NotificationPlugin,
         ));
     }
@@ -33,7 +33,7 @@ impl Plugin for HeliumFramework {
 
 pub mod prelude {
     pub use super::{
-        hotkeys::*, menu::*, notifications::*, reflect_system::*, tab_system::*, utils::*,
+        hotkeys::*, menu_system::*, notifications::*, reflect_system::*, tab_system::*, utils::*,
         HeliumFramework,
     };
 }
