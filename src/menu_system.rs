@@ -94,13 +94,12 @@ impl MenuSystem {
 
 // MenuTree for hierarchical rendering
 pub struct MenuTree<'a, C> {
-    items: &'a [MenuItem<C>],
-    root: MenuNode,
+    root: MenuNode<'a, C>,
 }
 
-enum MenuNode {
-    Item(usize), // Index into items Vec
-    SubMenu(String, IndexMap<String, MenuNode>),
+enum MenuNode<'a, C> {
+    Item(&'a MenuItem<C>),
+    SubMenu(String, IndexMap<String, MenuNode<'a, C>>),
 }
 
 impl<'a, C: 'static + Send + Sync> MenuTree<'a, C> {
@@ -108,108 +107,79 @@ impl<'a, C: 'static + Send + Sync> MenuTree<'a, C> {
         Self::generate_tree(items)
     }
 
-    fn generate_tree(items: &'a [MenuItem<C>]) -> Self {
+fn generate_tree(items: &'a [MenuItem<C>]) -> Self {
         let mut root = MenuNode::SubMenu(String::new(), IndexMap::new());
-        
-        // Build a map from path to (index, item)
-        let mut path_to_item: IndexMap<String, (usize, &'a MenuItem<C>)> = IndexMap::new();
-        for (index, item) in items.iter().enumerate() {
-            path_to_item.insert(item.path.clone(), (index, item));
-        }
-        
-        // Build the tree recursively by checking Action type
-        fn build_submenu_from_action<'a, C>(
-            parent_path: &str,
+
+        // Helper function to build the entire tree structure
+        fn build_recursive<'a, C>(
             items: &'a [MenuItem<C>],
-            path_to_item: &IndexMap<String, (usize, &'a MenuItem<C>)>,
-        ) -> IndexMap<String, MenuNode> {
+            parent_path: &str,
+            used_items: &mut std::collections::HashSet<usize>,
+        ) -> IndexMap<String, MenuNode<'a, C>> {
             let mut children = IndexMap::new();
-            let mut items_by_parent: IndexMap<String, Vec<(usize, &'a MenuItem<C>)>> = IndexMap::new();
-            
-            // Group items by their parent path
+            let mut direct_children = Vec::new();
+
+            // Find all direct children of this path
             for (index, item) in items.iter().enumerate() {
+                if used_items.contains(&index) {
+                    continue;
+                }
+
                 let item_parent = if let Some(last_slash) = item.path.rfind('/') {
                     &item.path[..last_slash]
                 } else {
                     ""
                 };
-                
+
                 if item_parent == parent_path {
-                    items_by_parent.entry("".to_string()).or_default().push((index, item));
+                    direct_children.push((index, item));
                 }
             }
-            
+
             // Sort by priority
-            if let Some(items) = items_by_parent.get_mut("") {
-                items.sort_by_key(|(_, item)| item.priority);
-            }
-            
-            // Build children
-            if let Some(items) = items_by_parent.get("") {
-                for (index, item) in items {
-                    let item_name = if let Some(last_slash) = item.path.rfind('/') {
-                        &item.path[last_slash + 1..]
-                    } else {
-                        &item.path
-                    };
-                    
-                    // Check if this item should be a submenu based on Action type
-                    match item.action {
-                        Action::SubMenu => {
-                            // Build submenu by finding all items with this as prefix
-                            let mut submenu_items = Vec::new();
-                            let prefix = if parent_path.is_empty() {
-                                item.path.clone()
-                            } else {
-                                format!("{}/ {}", parent_path, item_name)
-                            };
-                            
-                            for (_, other_item) in items.iter() {
-                                if other_item.path.starts_with(&prefix) && other_item.path != prefix {
-                                    submenu_items.push(other_item);
-                                }
-                            }
-                            
-                            // Sort submenu items
-                            submenu_items.sort_by_key(|item| item.priority);
-                            
-                            // Build submenu children
-                            let mut submenu_children = IndexMap::new();
-                            for sub_item in submenu_items {
-                                let sub_name = &sub_item.path[prefix.len() + 1..];
-                                if let Some((idx, _)) = path_to_item.get(&sub_item.path) {
-                                    submenu_children.insert(sub_name.to_string(), MenuNode::Item(*idx));
-                                }
-                            }
-                            
-                            children.insert(item_name.to_string(), MenuNode::SubMenu(item.title.to_string(), submenu_children));
-                        }
-                        _ => {
-                            children.insert(item_name.to_string(), MenuNode::Item(*index));
-                        }
+            direct_children.sort_by_key(|(_, item)| item.priority);
+
+            // Build the tree structure
+            for (index, item) in direct_children {
+                let item_name = if let Some(last_slash) = item.path.rfind('/') {
+                    &item.path[last_slash + 1..]
+                } else {
+                    &item.path
+                };
+
+                match item.action {
+                    Action::SubMenu => {
+                        // This is a submenu - recursively build its children
+                        let submenu_path = &item.path;
+                        let submenu_children = build_recursive(items, submenu_path, used_items);
+                        children.insert(item_name.to_string(), MenuNode::SubMenu(item.title.to_string(), submenu_children));
+                    }
+                    _ => {
+                        // This is a regular menu item
+                        children.insert(item_name.to_string(), MenuNode::Item(item));
                     }
                 }
             }
-            
+
             children
         }
-        
-        // Build the root menu
+
+        // Build the complete tree structure
+        let mut used_items = std::collections::HashSet::new();
         if let MenuNode::SubMenu(_, ref mut children) = root {
-            *children = build_submenu_from_action("", items, &path_to_item);
+            *children = build_recursive(items, "", &mut used_items);
         }
-        
-        Self { items, root }
+
+        Self { root }
     }
 
     pub fn render(&self, ui: &mut Ui, world: &mut World, context: &C) {
         self.render_recursive(&self.root, ui, world, context);
     }
 
-    fn render_recursive(&self, node: &MenuNode, ui: &mut Ui, world: &mut World, context: &C) {
+    fn render_recursive(&self, node: &MenuNode<'a, C>, ui: &mut Ui, world: &mut World, context: &C) {
         match node {
-            MenuNode::Item(item_index) => {
-                let item = &self.items[*item_index];
+            MenuNode::Item(item) => {
                 let visible = if let Some(ref condition) = item.when {
                     condition(world, context)
                 } else {
@@ -232,14 +202,21 @@ impl<'a, C: 'static + Send + Sync> MenuTree<'a, C> {
                         render_fn(ui, world, context);
                     }
                     Action::SubMenu => {
-                        unreachable!("SubMenu action should not be rendered directly");
+                        // SubMenu items are handled by the tree structure
                     }
                 }
             }
             MenuNode::SubMenu(title, children) => {
                 if !children.is_empty() {
                     ui.menu_button(title, |ui| {
-                        for child in children.values() {
+                        // Sort children by priority
+                        let mut sorted_children: Vec<_> = children.iter().collect();
+                        sorted_children.sort_by_key(|(_, node)| match *node {
+                            MenuNode::Item(item) => item.priority,
+                            MenuNode::SubMenu(_, _) => 0,
+                        });
+                        
+                        for (_, child) in sorted_children {
                             self.render_recursive(child, ui, world, context);
                         }
                     });
