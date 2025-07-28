@@ -8,17 +8,46 @@ use indexmap::IndexMap;
 
 use crate::reflect_system::{ActionId, RSystemRegistry, ReflectSystemId};
 
-// Core menu item generic over context type
+/// 菜单项结构体，用于定义菜单中的单个项目
+/// 
+/// 这是一个泛型结构体，可以适应不同的上下文类型
+/// 
+/// # 示例
+/// ```
+/// use helium_framework::menu_system::MenuItem;
+/// use std::marker::PhantomData;
+/// use crate::helium_framework::menu_system::Action;
+/// 
+/// let item = MenuItem::new("file_open", "打开文件", "文件/打开", Action::Command("open_file".into(), PhantomData::<()>));
+/// ```
 pub struct MenuItem<C> {
+    /// 菜单项的唯一标识符
     pub id: String,
+    /// 菜单项的显示文本
     pub title: Cow<'static, str>,
+    /// 菜单项的路径，用于构建层级结构（例如："文件/打开"）
     pub path: String,
+    /// 菜单项的动作类型
     pub action: Action<C>,
+    /// 可选的显示条件函数，返回true时显示此菜单项
     pub when: Option<Box<dyn Fn(&World, &C) -> bool + Send + Sync>>,
+    /// 优先级，值越小显示越靠前
     pub priority: i32,
 }
 
 impl<C> MenuItem<C> {
+    /// 创建一个新的菜单项
+    /// 
+    /// # 参数
+    /// - `id`: 菜单项的唯一标识符
+    /// - `title`: 菜单项的显示文本
+    /// - `path`: 菜单项的路径，用于构建层级结构
+    /// - `action`: 菜单项的动作类型
+    /// 
+    /// # 示例
+    /// ```
+    /// let item = MenuItem::new("save", "保存", "文件/保存", Action::Command("save_file".into(), PhantomData::<()>));
+    /// ```
     pub fn new(
         id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
@@ -35,6 +64,16 @@ impl<C> MenuItem<C> {
         }
     }
 
+    /// 为菜单项添加显示条件
+    /// 
+    /// # 参数
+    /// - `condition`: 条件函数，当返回true时显示此菜单项
+    /// 
+    /// # 示例
+    /// ```
+    /// let item = MenuItem::new("save", "保存", "文件/保存", Action::Command("save_file".into(), PhantomData::<()>))
+    ///     .with_condition(|world, _| world.resource::<AppState>().is_document_opened);
+    /// ```
     pub fn with_condition(
         mut self,
         condition: impl Fn(&World, &C) -> bool + Send + Sync + 'static,
@@ -43,28 +82,67 @@ impl<C> MenuItem<C> {
         self
     }
 
+    /// 设置菜单项的优先级
+    /// 
+    /// # 参数
+    /// - `priority`: 优先级数值，值越小显示越靠前
+    /// 
+    /// # 示例
+    /// ```
+    /// let item = MenuItem::new("new", "新建", "文件/新建", Action::Command("new_file".into(), PhantomData::<()>))
+    ///     .with_priority(0); // 高优先级
+    /// ```
     pub fn with_priority(mut self, priority: i32) -> Self {
         self.priority = priority;
         self
     }
 }
 
-// Action enum generic over context
+/// 菜单项动作枚举，定义菜单项的行为类型
+/// 
+/// 这是一个泛型枚举，支持三种不同类型的动作：
+/// - 命令执行：执行一个已注册的反射系统
+/// - 自定义动作：执行一个自定义系统
+/// - 子菜单：包含子菜单项
 pub enum Action<C> {
+    /// 执行一个已注册的命令（反射系统）
+    /// 
+    /// 第一个参数是命令的ActionId，第二个参数是上下文类型的占位符
     Command(ActionId, PhantomData<C>),
+    
+    /// 执行一个自定义系统
+    /// 
+    /// 参数是自定义系统的标识符
     Custom(ActionId),
+    
+    /// 表示这是一个子菜单项，会包含子菜单
     SubMenu,
 }
 
-// Type-safe storage using type as key
+/// 菜单系统，用于管理所有菜单项
+/// 
+/// 使用类型安全的存储方式，根据上下文类型进行分组管理
+/// 支持不同类型的上下文同时存在，互不干扰
 #[derive(Resource, Default)]
 pub struct MenuSystem {
     menus: HashMap<std::any::TypeId, Box<dyn std::any::Any + Send + Sync>>,
 }
 
 impl MenuSystem {
-    // Type-safe insertion
-    pub fn register<C: 'static + Send + Sync>(&mut self, item: MenuItem<C>) {
+    /// 注册一个新的菜单项到系统中
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `item`: 要注册的菜单项
+    /// 
+    /// # 说明
+    /// 菜单项会根据上下文类型自动分组，相同类型的菜单项会被放在一起
+    /// 注册后会自动按优先级排序
+    pub fn register<C: 'static + Send + Sync>(&mut self, 
+        item: MenuItem<C>
+    ) {
         let items: &mut Vec<MenuItem<C>> = self
             .menus
             .entry(std::any::TypeId::of::<C>())
@@ -75,8 +153,15 @@ impl MenuSystem {
         items.sort_by_key(|item| item.priority);
     }
 
-    // Type-safe retrieval
-    pub fn get_items<C: 'static + Send + Sync>(&self) -> &[MenuItem<C>] {
+    /// 获取指定上下文类型的所有菜单项的只读引用
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 返回值
+    /// 返回指定类型的菜单项切片，如果没有则返回空切片
+    pub fn get_items<C: 'static + Send + Sync>(&self
+    ) -> &[MenuItem<C>] {
         self.menus
             .get(&std::any::TypeId::of::<C>())
             .and_then(|items| items.downcast_ref::<Vec<MenuItem<C>>>())
@@ -84,8 +169,16 @@ impl MenuSystem {
             .unwrap_or_default()
     }
 
-    // Mutable access for rendering
-    pub fn get_items_mut<C: 'static + Send + Sync>(&mut self) -> &mut [MenuItem<C>] {
+    /// 获取指定上下文类型的所有菜单项的可变引用
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 返回值
+    /// 返回指定类型的菜单项可变切片，如果没有则返回空切片
+    pub fn get_items_mut<C: 'static + Send + Sync>(
+        &mut self
+    ) -> &mut [MenuItem<C>] {
         self.menus
             .get_mut(&std::any::TypeId::of::<C>())
             .and_then(|items| items.downcast_mut::<Vec<MenuItem<C>>>())
@@ -93,7 +186,18 @@ impl MenuSystem {
             .unwrap_or_default()
     }
 
-    // Type-safe rendering with mutable access
+    /// 显示指定上下文类型的菜单
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `ui`: egui的UI上下文
+    /// - `world`: Bevy的World引用
+    /// - `context`: 上下文实例
+    /// 
+    /// # 说明
+    /// 此方法会自动构建菜单树结构并按层级显示所有菜单项
     pub fn show_menu<C: 'static + Send + Sync>(
         &mut self,
         ui: &mut Ui,
@@ -106,22 +210,48 @@ impl MenuSystem {
     }
 }
 
-// MenuTree for hierarchical rendering
+/// 菜单树结构，用于层级化渲染菜单
+/// 
+/// 根据菜单项的路径自动构建树形结构，支持子菜单嵌套
 pub struct MenuTree<'a, C> {
+    /// 菜单项列表的可变引用
     items: &'a mut [MenuItem<C>],
+    /// 根节点，包含整个菜单树结构
     root: MenuNode,
 }
 
+/// 菜单节点枚举，定义树结构中的节点类型
 enum MenuNode {
-    Item(usize), // Index into items Vec
+    /// 叶子节点，表示一个具体的菜单项
+    /// 
+    /// 包含对应菜单项在items向量中的索引
+    Item(usize),
+    
+    /// 子菜单节点，包含子菜单的标题和子节点映射
     SubMenu(String, IndexMap<String, MenuNode>),
 }
 
 impl<'a, C: 'static + Send + Sync> MenuTree<'a, C> {
+    /// 创建一个新的菜单树
+    /// 
+    /// # 参数
+    /// - `items`: 菜单项列表的可变引用
+    /// 
+    /// # 返回值
+    /// 返回根据菜单项路径构建的菜单树结构
     pub fn new(items: &'a mut [MenuItem<C>]) -> Self {
         Self::generate_tree(items)
     }
 
+    /// 生成菜单树结构
+    /// 
+    /// 根据菜单项的路径自动构建层级化的树形结构
+    /// 
+    /// # 参数
+    /// - `items`: 菜单项列表的可变引用
+    /// 
+    /// # 返回值
+    /// 返回构建好的菜单树
     fn generate_tree(items: &'a mut [MenuItem<C>]) -> Self {
         let mut root = MenuNode::SubMenu(String::new(), IndexMap::new());
 
@@ -191,10 +321,29 @@ impl<'a, C: 'static + Send + Sync> MenuTree<'a, C> {
         Self { items, root }
     }
 
+    /// 渲染整个菜单树
+    /// 
+    /// # 参数
+    /// - `ui`: egui的UI上下文
+    /// - `world`: Bevy的World引用
+    /// - `context`: 上下文实例
     pub fn render(&mut self, ui: &mut Ui, world: &mut World, context: &C) {
         Self::render_recursive(&mut self.root, &mut self.items, ui, world, context);
     }
 
+    /// 递归渲染菜单树节点
+    /// 
+    /// # 参数
+    /// - `node`: 当前要渲染的菜单节点
+    /// - `items`: 菜单项列表的可变引用
+    /// - `ui`: egui的UI上下文
+    /// - `world`: Bevy的World引用
+    /// - `context`: 上下文实例
+    /// 
+    /// # 说明
+    /// 根据节点类型决定渲染方式：
+    /// - Item节点：渲染为按钮或可点击菜单项
+    /// - SubMenu节点：渲染为子菜单，并递归渲染其子节点
     fn render_recursive(
         node: &mut MenuNode,
         items: &mut [MenuItem<C>],
@@ -264,8 +413,27 @@ impl<'a, C: 'static + Send + Sync> MenuTree<'a, C> {
     }
 }
 
-// Menu registration trait
+/// 菜单注册trait，为App提供便捷的菜单注册方法
+/// 
+/// 此trait提供了多种注册菜单项的方式，支持子菜单、命令和自定义系统的注册
 pub trait MenuRegistration {
+    /// 注册一个子菜单
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `path`: 子菜单路径（例如："文件/新建"）
+    /// - `id`: 子菜单的唯一标识符
+    /// - `title`: 子菜单的显示文本
+    /// 
+    /// # 返回值
+    /// 返回App的可变引用，支持链式调用
+    /// 
+    /// # 示例
+    /// ```
+    /// app.register_submenu::<()>("文件", "file_menu", "文件");
+    /// ```
     fn register_submenu<C>(
         &mut self,
         path: impl Into<String>,
@@ -274,8 +442,43 @@ pub trait MenuRegistration {
     ) -> &mut Self
     where
         C: 'static + Send + Sync;
+
+    /// 注册一个菜单项
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `item`: 要注册的菜单项
+    /// 
+    /// # 返回值
+    /// 返回App的可变引用，支持链式调用
+    /// 
+    /// # 示例
+    /// ```
+    /// let item = MenuItem::new("save", "保存", "文件/保存", Action::Command("save_file".into(), PhantomData::<()>));
+    /// app.register(item);
+    /// ```
     fn register<C: 'static + Send + Sync>(&mut self, item: MenuItem<C>) -> &mut Self;
 
+    /// 注册一个命令菜单项
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `path`: 菜单项路径（例如："文件/保存"）
+    /// - `id`: 菜单项的唯一标识符
+    /// - `title`: 菜单项的显示文本
+    /// - `command`: 要执行的命令的ActionId
+    /// 
+    /// # 返回值
+    /// 返回App的可变引用，支持链式调用
+    /// 
+    /// # 示例
+    /// ```
+    /// app.register_command::<()>("文件/保存", "save", "保存", "save_file");
+    /// ```
     fn register_command<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
@@ -284,6 +487,24 @@ pub trait MenuRegistration {
         command: impl Into<ActionId>,
     ) -> &mut Self;
 
+    /// 注册一个自定义系统菜单项
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `path`: 菜单项路径（例如："文件/自定义"）
+    /// - `id`: 菜单项的唯一标识符
+    /// - `title`: 菜单项的显示文本
+    /// - `system_id`: 自定义系统的标识符
+    /// 
+    /// # 返回值
+    /// 返回App的可变引用，支持链式调用
+    /// 
+    /// # 示例
+    /// ```
+    /// app.register_custom::<()>("文件/自定义", "custom_action", "自定义操作", "my_custom_system");
+    /// ```
     fn register_custom<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
@@ -294,6 +515,16 @@ pub trait MenuRegistration {
 }
 
 impl MenuRegistration for App {
+    /// 注册一个菜单项到App
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `item`: 要注册的菜单项
+    /// 
+    /// # 返回值
+    /// 返回App的可变引用，支持链式调用
     fn register<C: 'static + Send + Sync>(&mut self, item: MenuItem<C>) -> &mut Self {
         self.world_mut()
             .resource_scope(|world, mut menu_system: Mut<MenuSystem>| {
@@ -302,6 +533,19 @@ impl MenuRegistration for App {
         self
     }
 
+    /// 注册一个命令菜单项到App
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `path`: 菜单项路径
+    /// - `id`: 菜单项的唯一标识符
+    /// - `title`: 菜单项的显示文本
+    /// - `command`: 要执行的命令的ActionId
+    /// 
+    /// # 返回值
+    /// 返回App的可变引用，支持链式调用
     fn register_command<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
@@ -317,6 +561,19 @@ impl MenuRegistration for App {
         ))
     }
 
+    /// 注册一个自定义系统菜单项到App
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `path`: 菜单项路径
+    /// - `id`: 菜单项的唯一标识符
+    /// - `title`: 菜单项的显示文本
+    /// - `system_id`: 自定义系统的标识符
+    /// 
+    /// # 返回值
+    /// 返回App的可变引用，支持链式调用
     fn register_custom<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
@@ -335,6 +592,18 @@ impl MenuRegistration for App {
         self
     }
 
+    /// 注册一个子菜单到App
+    /// 
+    /// # 类型参数
+    /// - `C`: 上下文类型，必须是'static + Send + Sync
+    /// 
+    /// # 参数
+    /// - `path`: 子菜单路径
+    /// - `id`: 子菜单的唯一标识符
+    /// - `title`: 子菜单的显示文本
+    /// 
+    /// # 返回值
+    /// 返回App的可变引用，支持链式调用
     fn register_submenu<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
@@ -345,10 +614,16 @@ impl MenuRegistration for App {
     }
 }
 
-// Plugin for the new menu system
+/// 菜单系统插件，用于初始化菜单系统资源
+/// 
+/// 此插件会自动注册MenuSystem资源，使其在整个应用生命周期中可用
 pub struct MenuSystemPlugin;
 
 impl Plugin for MenuSystemPlugin {
+    /// 构建插件，初始化菜单系统资源
+    /// 
+    /// # 参数
+    /// - `app`: Bevy的App引用，用于注册资源和系统
     fn build(&self, app: &mut App) {
         app.init_resource::<MenuSystem>();
     }
