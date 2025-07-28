@@ -102,7 +102,6 @@ impl RSystemRegistry {
     ) -> Result<(), ActionError>
     where
         <I as bevy::prelude::SystemInput>::Param<'static>: InputSubset<'static> + 'static,
-        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: 'static,
     {
         self.run_instant_ret::<I, ()>(id, input, world)
     }
@@ -114,7 +113,6 @@ impl RSystemRegistry {
     ) -> Result<O, ActionError>
     where
         <I as bevy::prelude::SystemInput>::Param<'static>: InputSubset<'static> + 'static,
-        <<I as bevy::prelude::SystemInput>::Param<'static> as SystemInput>::Inner<'static>: 'static,
     {
         self.0
             .get(id)
@@ -128,6 +126,24 @@ impl RSystemRegistry {
 
     pub fn get_meta(&self, id: &ActionId) -> Option<&ReflectSystemMeta> {
         self.0.get(id)
+    }
+    pub fn verify_type<I: bevy::prelude::SystemInput + 'static, O: 'static>(
+        &self,
+        id: &ActionId,
+    ) -> Result<(), ActionError> {
+        self.0
+            .get(id)
+            .ok_or(ActionError::NotFound { id: id.to_string() })
+            .and_then(|meta| {
+                if meta.system_id.system_id::<I, O>().is_some() {
+                    Ok(())
+                } else {
+                    Err(ActionError::MismatchInput {
+                        expected_type_name: meta.input.clone(),
+                        found_type_name: type_name::<I>().to_owned(),
+                    })
+                }
+            })
     }
 }
 
@@ -234,8 +250,8 @@ mod sealed {
 pub trait InputSubset<'i>: sealed::Sealed + SystemInput {
     fn into_inner(self) -> Self::Inner<'i>;
 }
-impl<T: 'static> InputSubset<'static> for In<T> {
-    fn into_inner(self) -> Self::Inner<'static> {
+impl<'a, T: 'static> InputSubset<'a> for In<T> {
+    fn into_inner(self) -> Self::Inner<'a> {
         self.0
     }
 }
@@ -312,7 +328,6 @@ impl Plugin for ActionPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bevy::ecs::system::IntoSystem;
 
     #[test]
     fn test_reflect_system() {
@@ -328,10 +343,19 @@ mod tests {
             },
         );
         app.reflect_system(
+            "test_action1",
+            "This is a test action",
+            |InRef(input): InRef<i32>| {
+                info!("Running test action with input: {}", input);
+                input * 2
+            },
+        );
+        app.reflect_system(
             "test_action_multi",
             "This is a test action",
-            |(In(input), InRef(input1)): (In<i32>, InRef<i32>)| {
+            |(In(input), InRef(input1), InMut(input2)): (In<i32>, InRef<i32>, InMut<i32>)| {
                 info!("Running test action with input: {}", input);
+                *input2 = 1145;
                 input + input1 + 10
             },
         );
@@ -343,14 +367,23 @@ mod tests {
                     world,
                 );
                 assert_eq!(result.unwrap(), 10);
-                let result = actions.run_instant_ret::<(In<i32>, InRef<i32>), i32>(
+                let var_name = 5;
+                let result = actions.run_instant_ret::<InRef<i32>, i32>(
+                    &"test_action1".into(),
+                    InRef(&var_name),
+                    world,
+                );
+                assert_eq!(result.unwrap(), 10);
+                let v = 10;
+                let mut var = 15;
+                let result = actions.run_instant_ret::<(In<i32>, InRef<i32>, InMut<i32>), i32>(
                     &"test_action_multi".into(),
-                    (In(5), InRef(&10)),
+                    (In(5), InRef(&v) , InMut(&mut var)),
                     world,
                 );
                 assert_eq!(result.unwrap(), 25);
-                // assert_eq!(input2, 1145);
-            },
+                assert_eq!(var, 1145);
+            }
         );
     }
 }
