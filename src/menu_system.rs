@@ -20,11 +20,9 @@ use crate::utils::new_condition;
 /// use std::marker::PhantomData;
 /// use crate::helium_framework::menu_system::Action;
 ///
-/// let item = MenuItem::new("file_open", "打开文件", "文件/打开", Action::Command("open_file".into(), PhantomData::<()>));
+/// let item = MenuItem::new("打开文件", "文件/打开", Action::Command("open_file".into(), PhantomData::<()>));
 /// ```
 pub struct MenuItem<C> {
-    /// 菜单项的唯一标识符
-    pub id: String,
     /// 菜单项的显示文本
     pub title: Cow<'static, str>,
     /// 菜单项的路径，用于构建层级结构（例如："文件/打开"）
@@ -41,23 +39,20 @@ impl<C> MenuItem<C> {
     /// 创建一个新的菜单项
     ///
     /// # 参数
-    /// - `id`: 菜单项的唯一标识符
     /// - `title`: 菜单项的显示文本
     /// - `path`: 菜单项的路径，用于构建层级结构
     /// - `action`: 菜单项的动作类型
     ///
     /// # 示例
     /// ```
-    /// let item = MenuItem::new("save", "保存", "文件/保存", Action::Command("save_file".into(), PhantomData::<()>));
+    /// let item = MenuItem::new("保存", "文件/保存", Action::Command("save_file".into(), PhantomData::<()>));
     /// ```
     pub fn new(
-        id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
         path: impl Into<String>,
         action: Action<C>,
     ) -> Self {
         Self {
-            id: id.into(),
             title: title.into(),
             path: path.into(),
             action,
@@ -445,7 +440,6 @@ pub trait MenuRegistration {
     fn register_submenu<C>(
         &mut self,
         path: impl Into<String>,
-        id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
     ) -> &mut Self
     where
@@ -490,7 +484,6 @@ pub trait MenuRegistration {
     fn register_command<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
-        id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
         command: impl Into<ActionId>,
     ) -> &mut Self;
@@ -516,7 +509,6 @@ pub trait MenuRegistration {
     fn register_custom<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
-        id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
         system_id: impl Into<crate::utils::identifier::Identifier>,
     ) -> &mut Self;
@@ -557,12 +549,10 @@ impl MenuRegistration for App {
     fn register_command<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
-        id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
         command: impl Into<ActionId>,
     ) -> &mut Self {
         self.register(MenuItem::new(
-            id,
             title,
             path,
             Action::Command(command.into(), PhantomData::<C>),
@@ -585,13 +575,11 @@ impl MenuRegistration for App {
     fn register_custom<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
-        id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
         system_id: impl Into<crate::utils::identifier::Identifier>,
     ) -> &mut Self {
         let system_id = system_id.into();
         self.register(MenuItem::new(
-            id,
             title,
             path,
             Action::Custom::<C>(system_id),
@@ -615,10 +603,9 @@ impl MenuRegistration for App {
     fn register_submenu<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
-        id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
     ) -> &mut Self {
-        self.register(MenuItem::<C>::new(id, title, path, Action::SubMenu))
+        self.register(MenuItem::<C>::new(title, path, Action::SubMenu))
     }
 }
 

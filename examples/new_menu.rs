@@ -23,17 +23,15 @@ fn main() {
         ui.label(format!("Context: {:?}", editor));
     });
     // Register menus using new system
-    app.register_submenu::<MainMenuContext>("file", "file", "File")
-    .register_command::<MainMenuContext>("file/new", "file.new", "New", "file.new")
-        .register_command::<MainMenuContext>("file/quit", "file.quit", "Quit", "file.quit")
+    app.register_submenu::<MainMenuContext>("file",  "File")
+    .register_command::<MainMenuContext>("file/new",  "New", "file.new")
+        .register_command::<MainMenuContext>("file/quit", "Quit", "file.quit")
         .register_custom::<EditorContext>(
-            "format",
             "editor.format",
             "Format Code",
             "editor.format",
         )
         .register_command::<EditorContext>(
-            "copy",
             "editor.copy",
             "Copy",
             "editor.copy",
