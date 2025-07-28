@@ -18,7 +18,10 @@ fn main() {
         })
         .add_plugins(HeliumFramework)
         .insert_resource(HeDockState(DockState::new(vec!["default".into()])));
-
+    app.reflect_system("editor.format", "Format Code", |(InMut(ui), InRef(editor)): (InMut<Ui>, InRef<EditorContext>)| {
+        ui.label("This is a format code action");
+        ui.label(format!("Context: {:?}", editor));
+    });
     // Register menus using new system
     app.register_submenu::<MainMenuContext>("file", "file", "File")
     .register_command::<MainMenuContext>("file/new", "file.new", "New", "file.new")
@@ -27,11 +30,7 @@ fn main() {
             "format",
             "editor.format",
             "Format Code",
-            |ui, world, _ctx| {
-                if ui.button("Format Code").clicked() {
-                    info!("Formatting code...");
-                }
-            },
+            "editor.format",
         )
         .register_command::<EditorContext>(
             "copy",

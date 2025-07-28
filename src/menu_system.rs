@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use egui::Ui;
 use indexmap::IndexMap;
 
-use crate::reflect_system::ActionId;
+use crate::reflect_system::{ActionId, RSystemRegistry, ReflectSystemId};
 
 // Core menu item generic over context type
 pub struct MenuItem<C> {
@@ -52,7 +52,7 @@ impl<C> MenuItem<C> {
 // Action enum generic over context
 pub enum Action<C> {
     Command(ActionId, PhantomData<C>),
-    Custom(Box<dyn Fn(&mut Ui, &mut World, &C) + Send + Sync>),
+    Custom(ActionId),
     SubMenu,
 }
 
@@ -65,7 +65,8 @@ pub struct MenuSystem {
 impl MenuSystem {
     // Type-safe insertion
     pub fn register<C: 'static + Send + Sync>(&mut self, item: MenuItem<C>) {
-        let items: &mut Vec<MenuItem<C>> = self.menus
+        let items: &mut Vec<MenuItem<C>> = self
+            .menus
             .entry(std::any::TypeId::of::<C>())
             .or_insert_with(|| Box::new(Vec::<MenuItem<C>>::new()))
             .downcast_mut::<Vec<MenuItem<C>>>()
@@ -93,12 +94,15 @@ impl MenuSystem {
     }
 
     // Type-safe rendering with mutable access
-    pub fn show_menu<C: 'static + Send + Sync>(&mut self, ui: &mut Ui, world: &mut World, context: &C) {
-        world.resource_scope(|world, mut menu_system: Mut<MenuSystem>| {
-            let items = menu_system.get_items_mut::<C>();
-            let mut tree = MenuTree::new(items);
-            tree.render(ui, world, context);
-        });
+    pub fn show_menu<C: 'static + Send + Sync>(
+        &mut self,
+        ui: &mut Ui,
+        world: &mut World,
+        context: &C,
+    ) {
+        let items = self.get_items_mut::<C>();
+        let mut tree = MenuTree::new(items);
+        tree.render(ui, world, context);
     }
 }
 
@@ -118,7 +122,7 @@ impl<'a, C: 'static + Send + Sync> MenuTree<'a, C> {
         Self::generate_tree(items)
     }
 
-fn generate_tree(items: &'a mut [MenuItem<C>]) -> Self {
+    fn generate_tree(items: &'a mut [MenuItem<C>]) -> Self {
         let mut root = MenuNode::SubMenu(String::new(), IndexMap::new());
 
         // Helper function to build the entire tree structure
@@ -163,7 +167,10 @@ fn generate_tree(items: &'a mut [MenuItem<C>]) -> Self {
                         // This is a submenu - recursively build its children
                         let submenu_path = &item.path;
                         let submenu_children = build_recursive(items, submenu_path, used_items);
-                        children.insert(item_name.to_string(), MenuNode::SubMenu(item.title.to_string(), submenu_children));
+                        children.insert(
+                            item_name.to_string(),
+                            MenuNode::SubMenu(item.title.to_string(), submenu_children),
+                        );
                     }
                     _ => {
                         // This is a regular menu item
@@ -216,8 +223,21 @@ fn generate_tree(items: &'a mut [MenuItem<C>]) -> Self {
                             });
                         }
                     }
-                    Action::Custom(render_fn) => {
-                        render_fn(ui, world, context);
+                    Action::Custom(reflect_system_id) => {
+                        world.resource_scope(
+                            |world, mut registry: Mut<crate::reflect_system::RSystemRegistry>| {
+                                if let Err(e) = registry.run_instant(
+                                    reflect_system_id,
+                                    (InMut(ui), InRef(context)),
+                                    world,
+                                ) {
+                                    error!(
+                                        "Failed to run custom menu {}: {}",
+                                        reflect_system_id, e
+                                    );
+                                }
+                            },
+                        );
                     }
                     Action::SubMenu => {
                         // SubMenu items are handled by the tree structure
@@ -233,7 +253,7 @@ fn generate_tree(items: &'a mut [MenuItem<C>]) -> Self {
                             MenuNode::Item(index) => items[index].priority,
                             MenuNode::SubMenu(_, _) => 0,
                         });
-                        
+
                         for (_, child) in sorted_children {
                             Self::render_recursive(child, items, ui, world, context);
                         }
@@ -246,11 +266,16 @@ fn generate_tree(items: &'a mut [MenuItem<C>]) -> Self {
 
 // Menu registration trait
 pub trait MenuRegistration {
-    fn register_submenu<C>(&mut self, path: impl Into<String>, id: impl Into<String>, title: impl Into<Cow<'static, str>>) -> &mut Self
-where
-    C: 'static + Send + Sync,;
+    fn register_submenu<C>(
+        &mut self,
+        path: impl Into<String>,
+        id: impl Into<String>,
+        title: impl Into<Cow<'static, str>>,
+    ) -> &mut Self
+    where
+        C: 'static + Send + Sync;
     fn register<C: 'static + Send + Sync>(&mut self, item: MenuItem<C>) -> &mut Self;
-    
+
     fn register_command<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
@@ -258,24 +283,25 @@ where
         title: impl Into<Cow<'static, str>>,
         command: impl Into<ActionId>,
     ) -> &mut Self;
-    
+
     fn register_custom<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
         id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
-        render: impl Fn(&mut Ui, &mut World, &C) + Send + Sync + 'static,
+        system_id: impl Into<crate::utils::identifier::Identifier>,
     ) -> &mut Self;
 }
 
 impl MenuRegistration for App {
     fn register<C: 'static + Send + Sync>(&mut self, item: MenuItem<C>) -> &mut Self {
-        self.world_mut().resource_scope(|world, mut menu_system: Mut<MenuSystem>| {
-            menu_system.register(item);
-        });
+        self.world_mut()
+            .resource_scope(|world, mut menu_system: Mut<MenuSystem>| {
+                menu_system.register(item);
+            });
         self
     }
-    
+
     fn register_command<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
@@ -290,20 +316,23 @@ impl MenuRegistration for App {
             Action::Command(command.into(), PhantomData::<C>),
         ))
     }
-    
+
     fn register_custom<C: 'static + Send + Sync>(
         &mut self,
         path: impl Into<String>,
         id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
-        render: impl Fn(&mut Ui, &mut World, &C) + Send + Sync + 'static,
+        system_id: impl Into<crate::utils::identifier::Identifier>,
     ) -> &mut Self {
+        let system_id = system_id.into();
         self.register(MenuItem::new(
             id,
             title,
             path,
-            Action::Custom(Box::new(render)),
-        ))
+            Action::Custom::<C>(system_id),
+        ));
+
+        self
     }
 
     fn register_submenu<C: 'static + Send + Sync>(
@@ -312,13 +341,8 @@ impl MenuRegistration for App {
         id: impl Into<String>,
         title: impl Into<Cow<'static, str>>,
     ) -> &mut Self {
-        self.register(MenuItem::<C>::new(
-            id,
-            title,
-            path,
-            Action::SubMenu,
-        ))
-    } 
+        self.register(MenuItem::<C>::new(id, title, path, Action::SubMenu))
+    }
 }
 
 // Plugin for the new menu system
