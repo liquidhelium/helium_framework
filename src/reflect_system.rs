@@ -218,16 +218,21 @@ mod sealed {
 
     pub trait Sealed {}
     impl<T> Sealed for In<T> {}
-    impl Sealed for () {}
     impl<'i, T: 'static> Sealed for InRef<'i, T> {}
     impl<'i, T: 'static> Sealed for InMut<'i, T> {}
+    macro_rules! impl_sealed_tuple {
+        ($($name:ident),*) => {
+            impl<$($name: Sealed),*> Sealed for ($($name,)*) {}
+        };
+    }
+    variadics_please::all_tuples!(
+        impl_sealed_tuple,
+        0, 8, I
+    );
 }
 
 pub trait InputSubset<'i>: sealed::Sealed + SystemInput {
     fn into_inner(self) -> Self::Inner<'i>;
-}
-impl InputSubset<'static> for () {
-    fn into_inner(self) -> Self::Inner<'static> {}
 }
 impl<T: 'static> InputSubset<'static> for In<T> {
     fn into_inner(self) -> Self::Inner<'static> {
@@ -245,6 +250,24 @@ impl<'a, T: 'static> InputSubset<'a> for InMut<'a, T> {
         self.0
     }
 }
+
+macro_rules! impl_system_input_tuple {
+    ($(($n:tt, $name:ident)),*) => {
+        #[allow(clippy::unused_unit)]
+        impl<'i, $($name: InputSubset<'i>),*> InputSubset<'i> for ($($name,)*) {
+            fn into_inner(self) -> Self::Inner<'i> {
+                ($(
+                    self.$n.into_inner(),
+                )*)
+            }
+        }
+    };
+}
+
+variadics_please::all_tuples_enumerated!(
+    impl_system_input_tuple,
+    0, 8, I
+);
 
 impl ActionsExt for App {
     fn reflect_system<'i, M, I: InputSubset<'i> + Send + Sync + 'static, O: 'static>(
@@ -283,5 +306,51 @@ pub struct ActionPlugin;
 impl Plugin for ActionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RSystemRegistry>();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::ecs::system::IntoSystem;
+
+    #[test]
+    fn test_reflect_system() {
+        let mut app = App::new();
+        app
+            .add_plugins(ActionPlugin);
+        app.reflect_system(
+            "test_action",
+            "This is a test action",
+            |In(input): In<i32>| {
+                info!("Running test action with input: {}", input);
+                input * 2
+            },
+        );
+        app.reflect_system(
+            "test_action_multi",
+            "This is a test action",
+            |(In(input), InRef(input1)): (In<i32>, InRef<i32>)| {
+                info!("Running test action with input: {}", input);
+                input + input1 + 10
+            },
+        );
+        app.world_mut().resource_scope(
+            |world: &mut World, mut actions: Mut<'_, RSystemRegistry>| {
+                let result = actions.run_instant_ret::<In<i32>, i32>(
+                    &"test_action".into(),
+                    In(5),
+                    world,
+                );
+                assert_eq!(result.unwrap(), 10);
+                let result = actions.run_instant_ret::<(In<i32>, InRef<i32>), i32>(
+                    &"test_action_multi".into(),
+                    (In(5), InRef(&10)),
+                    world,
+                );
+                assert_eq!(result.unwrap(), 25);
+                // assert_eq!(input2, 1145);
+            },
+        );
     }
 }
