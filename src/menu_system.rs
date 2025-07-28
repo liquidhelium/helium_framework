@@ -83,39 +83,50 @@ impl MenuSystem {
             .unwrap_or_default()
     }
 
-    // Type-safe rendering
-    pub fn show_menu<C: 'static + Send + Sync>(&self, ui: &mut Ui, world: &mut World, context: &C) {
-        let items = self.get_items::<C>();
-        let tree = MenuTree::<C>::new(items);
-        
-        tree.render(ui, world, context);
+    // Mutable access for rendering
+    pub fn get_items_mut<C: 'static + Send + Sync>(&mut self) -> &mut [MenuItem<C>] {
+        self.menus
+            .get_mut(&std::any::TypeId::of::<C>())
+            .and_then(|items| items.downcast_mut::<Vec<MenuItem<C>>>())
+            .map(|vec| vec.as_mut_slice())
+            .unwrap_or_default()
+    }
+
+    // Type-safe rendering with mutable access
+    pub fn show_menu<C: 'static + Send + Sync>(&mut self, ui: &mut Ui, world: &mut World, context: &C) {
+        world.resource_scope(|world, mut menu_system: Mut<MenuSystem>| {
+            let items = menu_system.get_items_mut::<C>();
+            let mut tree = MenuTree::new(items);
+            tree.render(ui, world, context);
+        });
     }
 }
 
 // MenuTree for hierarchical rendering
 pub struct MenuTree<'a, C> {
-    root: MenuNode<'a, C>,
+    items: &'a mut [MenuItem<C>],
+    root: MenuNode,
 }
 
-enum MenuNode<'a, C> {
-    Item(&'a MenuItem<C>),
-    SubMenu(String, IndexMap<String, MenuNode<'a, C>>),
+enum MenuNode {
+    Item(usize), // Index into items Vec
+    SubMenu(String, IndexMap<String, MenuNode>),
 }
 
 impl<'a, C: 'static + Send + Sync> MenuTree<'a, C> {
-    pub fn new(items: &'a [MenuItem<C>]) -> Self {
+    pub fn new(items: &'a mut [MenuItem<C>]) -> Self {
         Self::generate_tree(items)
     }
 
-fn generate_tree(items: &'a [MenuItem<C>]) -> Self {
+fn generate_tree(items: &'a mut [MenuItem<C>]) -> Self {
         let mut root = MenuNode::SubMenu(String::new(), IndexMap::new());
 
         // Helper function to build the entire tree structure
-        fn build_recursive<'a, C>(
-            items: &'a [MenuItem<C>],
+        fn build_recursive<C: 'static + Send + Sync>(
+            items: &[MenuItem<C>],
             parent_path: &str,
             used_items: &mut std::collections::HashSet<usize>,
-        ) -> IndexMap<String, MenuNode<'a, C>> {
+        ) -> IndexMap<String, MenuNode> {
             let mut children = IndexMap::new();
             let mut direct_children = Vec::new();
 
@@ -156,7 +167,7 @@ fn generate_tree(items: &'a [MenuItem<C>]) -> Self {
                     }
                     _ => {
                         // This is a regular menu item
-                        children.insert(item_name.to_string(), MenuNode::Item(item));
+                        children.insert(item_name.to_string(), MenuNode::Item(index));
                     }
                 }
             }
@@ -170,16 +181,23 @@ fn generate_tree(items: &'a [MenuItem<C>]) -> Self {
             *children = build_recursive(items, "", &mut used_items);
         }
 
-        Self { root }
+        Self { items, root }
     }
 
-    pub fn render(&self, ui: &mut Ui, world: &mut World, context: &C) {
-        self.render_recursive(&self.root, ui, world, context);
+    pub fn render(&mut self, ui: &mut Ui, world: &mut World, context: &C) {
+        Self::render_recursive(&mut self.root, &mut self.items, ui, world, context);
     }
 
-    fn render_recursive(&self, node: &MenuNode<'a, C>, ui: &mut Ui, world: &mut World, context: &C) {
+    fn render_recursive(
+        node: &mut MenuNode,
+        items: &mut [MenuItem<C>],
+        ui: &mut Ui,
+        world: &mut World,
+        context: &C,
+    ) {
         match node {
-            MenuNode::Item(item) => {
+            MenuNode::Item(index) => {
+                let item = &mut items[*index];
                 let visible = if let Some(ref condition) = item.when {
                     condition(world, context)
                 } else {
@@ -206,18 +224,18 @@ fn generate_tree(items: &'a [MenuItem<C>]) -> Self {
                     }
                 }
             }
-            MenuNode::SubMenu(title, children) => {
+            MenuNode::SubMenu(ref title, ref mut children) => {
                 if !children.is_empty() {
-                    ui.menu_button(title, |ui| {
-                        // Sort children by priority
-                        let mut sorted_children: Vec<_> = children.iter().collect();
-                        sorted_children.sort_by_key(|(_, node)| match *node {
-                            MenuNode::Item(item) => item.priority,
+                    ui.menu_button(&*title, |ui| {
+                        // Sort children by priority using indices
+                        let mut sorted_children: Vec<_> = children.iter_mut().collect();
+                        sorted_children.sort_by_key(|(_, node)| match **node {
+                            MenuNode::Item(index) => items[index].priority,
                             MenuNode::SubMenu(_, _) => 0,
                         });
                         
                         for (_, child) in sorted_children {
-                            self.render_recursive(child, ui, world, context);
+                            Self::render_recursive(child, items, ui, world, context);
                         }
                     });
                 }
