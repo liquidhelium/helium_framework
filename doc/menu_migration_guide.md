@@ -83,7 +83,7 @@ ctx.add("save", "Save", Button::new_conditioned("file.save", |world: &World| {
 use helium_framework::menu_system::*;
 
 let save_item = MenuItem::new("save", "保存", "file/save", Action::Command("file.save", PhantomData::<MainMenuContext>))
-    .with_condition(|world, _| world.resource::<AppState>().has_unsaved_changes)
+    .with_condition(|world: &World| world.resource::<AppState>().has_unsaved_changes)
     .with_priority(2);
 
 app.register(save_item);
@@ -150,7 +150,7 @@ fn egui_main(world: &mut World) {
 #### 3.2 上下文菜单
 
 **旧代码：**
-没有对应的功能
+没有对应的功能, 旧代码的一切都是为了主菜单栏
 
 **新代码：**
 ```rust
@@ -179,7 +179,7 @@ ui.add(Label::new("右键点击我").sense(Sense::all()))
 ### 5. 条件函数变更
 
 **旧系统**：使用`Condition<M>` trait
-**新系统**：使用`Fn(&World, &C) -> bool`闭包
+**新系统**：使用`Condition<M>` trait，与hotkeys系统保持一致
 
 ## 完整迁移示例
 
@@ -239,7 +239,7 @@ fn main() {
     
     // 注册条件命令
     let save_item = MenuItem::new("save", "保存", "file/save", Action::Command("file.save", PhantomData::<MainMenuContext>))
-        .with_condition(|world, _| world.resource::<AppState>().has_unsaved_changes)
+        .with_condition(|world: &World| world.resource::<AppState>().has_unsaved_changes)
         .with_priority(2);
     app.register(save_item);
     
@@ -251,7 +251,7 @@ fn main() {
 
 - [ ] 替换 `MenuPlugin` 为 `MenuSystemPlugin`
 - [ ] 移除 `menu_context()` 调用
-- [ ] 定义上下文类型（如 `MainMenuContext`, `EditorContext` 等）
+- [ ] 定义上下文类型（如 `MainMenuContext`, 旧系统的一切都是为了MainMenu的）
 - [ ] 将 `Button::new()` 改为 `Action::Command`
 - [ ] 将 `Button::new_conditioned()` 改为 `.with_condition()`
 - [ ] 将 `Custom::new()` 改为 `Action::Custom`
@@ -285,7 +285,7 @@ app.register_command::<MainMenuContext>(...)
 
 ```rust
 let dynamic_item = MenuItem::new("item", "动态项", "path", Action::Command("action", PhantomData::<C>))
-    .with_condition(|world, _| {
+    .with_condition(|world: &World| {
         // 根据运行时状态决定是否显示
         world.resource::<AppState>().should_show_item
     });

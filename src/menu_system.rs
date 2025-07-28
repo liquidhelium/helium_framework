@@ -2,11 +2,13 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
+use bevy::ecs::schedule::BoxedCondition;
 use bevy::prelude::*;
 use egui::Ui;
 use indexmap::IndexMap;
 
 use crate::reflect_system::{ActionId, RSystemRegistry, ReflectSystemId};
+use crate::utils::new_condition;
 
 /// 菜单项结构体，用于定义菜单中的单个项目
 /// 
@@ -29,8 +31,8 @@ pub struct MenuItem<C> {
     pub path: String,
     /// 菜单项的动作类型
     pub action: Action<C>,
-    /// 可选的显示条件函数，返回true时显示此菜单项
-    pub when: Option<Box<dyn Fn(&World, &C) -> bool + Send + Sync>>,
+    /// 可选的显示条件，返回true时显示此菜单项
+    pub when: BoxedCondition,
     /// 优先级，值越小显示越靠前
     pub priority: i32,
 }
@@ -59,7 +61,7 @@ impl<C> MenuItem<C> {
             title: title.into(),
             path: path.into(),
             action,
-            when: None,
+            when: new_condition(|| true),
             priority: 0,
         }
     }
@@ -72,13 +74,13 @@ impl<C> MenuItem<C> {
     /// # 示例
     /// ```
     /// let item = MenuItem::new("save", "保存", "文件/保存", Action::Command("save_file".into(), PhantomData::<()>))
-    ///     .with_condition(|world, _| world.resource::<AppState>().is_document_opened);
+    ///     .with_condition(|world: &World| world.resource::<AppState>().is_document_opened);
     /// ```
-    pub fn with_condition(
+    pub fn with_condition<M>(
         mut self,
-        condition: impl Fn(&World, &C) -> bool + Send + Sync + 'static,
+        condition: impl Condition<M>,
     ) -> Self {
-        self.when = Some(Box::new(condition));
+        self.when = new_condition(condition);
         self
     }
 
@@ -95,6 +97,14 @@ impl<C> MenuItem<C> {
     pub fn with_priority(mut self, priority: i32) -> Self {
         self.priority = priority;
         self
+    }
+
+    /// 初始化菜单项的条件系统
+    /// 
+    /// # 参数
+    /// - `world`: Bevy的World引用
+    pub fn initialize(&mut self, world: &mut World) {
+        self.when.initialize(world);
     }
 }
 
@@ -136,12 +146,14 @@ impl MenuSystem {
     /// 
     /// # 参数
     /// - `item`: 要注册的菜单项
+    /// - `world`: Bevy的World引用，用于初始化条件系统
     /// 
     /// # 说明
     /// 菜单项会根据上下文类型自动分组，相同类型的菜单项会被放在一起
     /// 注册后会自动按优先级排序
     pub fn register<C: 'static + Send + Sync>(&mut self, 
-        item: MenuItem<C>
+        mut item: MenuItem<C>,
+        world: &mut World
     ) {
         let items: &mut Vec<MenuItem<C>> = self
             .menus
@@ -149,6 +161,9 @@ impl MenuSystem {
             .or_insert_with(|| Box::new(Vec::<MenuItem<C>>::new()))
             .downcast_mut::<Vec<MenuItem<C>>>()
             .unwrap();
+        
+        // 初始化条件系统
+        item.when.initialize(world);
         items.push(item);
         items.sort_by_key(|item| item.priority);
     }
@@ -354,11 +369,7 @@ impl<'a, C: 'static + Send + Sync> MenuTree<'a, C> {
         match node {
             MenuNode::Item(index) => {
                 let item = &mut items[*index];
-                let visible = if let Some(ref condition) = item.when {
-                    condition(world, context)
-                } else {
-                    true
-                };
+                let visible = item.when.run_readonly((), world);
 
                 if !visible {
                     return;
@@ -525,10 +536,10 @@ impl MenuRegistration for App {
     /// 
     /// # 返回值
     /// 返回App的可变引用，支持链式调用
-    fn register<C: 'static + Send + Sync>(&mut self, item: MenuItem<C>) -> &mut Self {
+    fn register<C: 'static + Send + Sync>(&mut self, mut item: MenuItem<C>) -> &mut Self {
         self.world_mut()
             .resource_scope(|world, mut menu_system: Mut<MenuSystem>| {
-                menu_system.register(item);
+                menu_system.register(item, world);
             });
         self
     }
